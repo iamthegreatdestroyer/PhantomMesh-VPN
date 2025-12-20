@@ -1,0 +1,67 @@
+# Multi-region deployment configuration
+# This overlay creates deployments across multiple regions
+
+# US East Region
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phantom-node-us-east
+  namespace: phantom-mesh-us-east
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        region: us-east
+        primary: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-swarm-us-east
+  namespace: phantom-mesh-us-east
+spec:
+  replicas: 3
+---
+# EU West Region
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phantom-node-eu-west
+  namespace: phantom-mesh-eu-west
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        region: eu-west
+        primary: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-swarm-eu-west
+  namespace: phantom-mesh-eu-west
+spec:
+  replicas: 3
+---
+# Global Load Balancer Configuration
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-global-lb
+  namespace: phantom-mesh
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "2"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 51820
+      targetPort: 51820
+      protocol: UDP
+  selector:
+    app: phantom-node
+    primary: "true"

@@ -1,0 +1,49 @@
+{
+  "name": "PhantomMesh VPN Development",
+  "build": {
+    "dockerfile": "Dockerfile.dev",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "stable",
+      "profile": "default"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "github.copilot",
+        "github.copilot-chat",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "python.analysis.typeCheckingMode": "strict",
+        "editor.formatOnSave": true,
+        "[rust]": { "editor.defaultFormatter": "rust-lang.rust-analyzer" },
+        "[python]": { "editor.defaultFormatter": "ms-python.black-formatter" }
+      }
+    }
+  },
+  "forwardPorts": [51820, 8080, 9090, 3000],
+  "postCreateCommand": "cargo build && pip install -e '.[dev]'",
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "RUST_BACKTRACE": "1",
+    "PHANTOM_DEV_MODE": "true"
+  }
+}

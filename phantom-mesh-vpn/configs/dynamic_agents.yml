@@ -1,0 +1,12 @@
+# Dynamic agent service discovery
+# This file is updated automatically by the agent swarm orchestrator
+# Format: Prometheus file-based service discovery
+
+- targets:
+    # Dynamic agents will be registered here by the orchestrator
+    # Example:
+    # - 'agent-aegis:8001'
+    # - 'agent-fortress:8002'
+  labels:
+    job: phantom-dynamic-agents
+    service: agent-sub-swarm

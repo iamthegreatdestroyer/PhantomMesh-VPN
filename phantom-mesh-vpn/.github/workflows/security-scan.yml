@@ -1,0 +1,73 @@
+name: Security Scan
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+    schedule:
+        - cron: "0 0 * * 0" # Weekly scan
+
+jobs:
+    dependency-audit:
+        name: Dependency Audit
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-action@stable
+
+            - name: Install cargo-audit
+              run: cargo install cargo-audit
+
+            - name: Run cargo audit
+              run: cargo audit --deny warnings
+
+            - name: Set up Python 3.11
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Install safety
+              run: pip install safety
+
+            - name: Run Python dependency check
+              run: safety check -r pyproject.toml
+
+    sast-scan:
+        name: Static Analysis
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Run Semgrep
+              uses: returntocorp/semgrep-action@v1
+              with:
+                  config: >-
+                      p/security-audit
+                      p/secrets
+                      p/rust
+                      p/python
+
+    container-scan:
+        name: Container Scan
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Build test image
+              run: docker build -t phantom-mesh-test:scan -f Dockerfile.node .
+
+            - name: Run Trivy
+              uses: aquasecurity/trivy-action@master
+              with:
+                  image-ref: "phantom-mesh-test:scan"
+                  format: "sarif"
+                  output: "trivy-results.sarif"
+                  severity: "CRITICAL,HIGH"
+
+            - name: Upload Trivy scan results
+              uses: github/codeql-action/upload-sarif@v3
+              with:
+                  sarif_file: "trivy-results.sarif"

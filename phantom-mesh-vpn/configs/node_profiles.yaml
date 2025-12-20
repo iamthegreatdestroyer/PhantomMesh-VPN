@@ -1,0 +1,90 @@
+# PhantomMesh Node Profiles Configuration
+# Copyright © 2025 Stephen Bilodeau. All rights reserved.
+
+# Node profile definitions for different deployment scenarios
+profiles:
+  primary:
+    name: "Primary Gateway Node"
+    description: "Main entry point for the PhantomMesh network"
+    capabilities:
+      - gateway
+      - routing
+      - key_exchange
+      - threat_detection
+    resource_limits:
+      max_peers: 1000
+      max_bandwidth_mbps: 10000
+      memory_limit_mb: 4096
+    network:
+      listen_port: 51820
+      api_port: 8080
+      metrics_port: 9090
+    agents:
+      enabled: true
+      orchestrator_mode: autonomous
+      mnemonic_cache_size: 10000
+
+  relay:
+    name: "Relay Node"
+    description: "Traffic relay for mesh optimization"
+    capabilities:
+      - routing
+      - traffic_analysis
+    resource_limits:
+      max_peers: 500
+      max_bandwidth_mbps: 5000
+      memory_limit_mb: 2048
+    network:
+      listen_port: 51820
+      api_port: 8080
+    agents:
+      enabled: true
+      orchestrator_mode: follower
+
+  edge:
+    name: "Edge Node"
+    description: "Lightweight edge deployment"
+    capabilities:
+      - routing
+    resource_limits:
+      max_peers: 100
+      max_bandwidth_mbps: 1000
+      memory_limit_mb: 512
+    network:
+      listen_port: 51820
+    agents:
+      enabled: false
+
+  guardian:
+    name: "Guardian Node"
+    description: "Security-focused monitoring node"
+    capabilities:
+      - threat_detection
+      - anomaly_analysis
+      - key_rotation
+    resource_limits:
+      max_peers: 50
+      memory_limit_mb: 8192
+    agents:
+      enabled: true
+      orchestrator_mode: security
+      priority_agents:
+        - fortress
+        - aegis
+        - cipher
+
+# Default profile selection
+default_profile: primary
+
+# Profile inheritance rules
+inheritance:
+  relay:
+    extends: primary
+    overrides:
+      - resource_limits
+      - agents.orchestrator_mode
+  edge:
+    extends: relay
+    overrides:
+      - capabilities
+      - agents.enabled

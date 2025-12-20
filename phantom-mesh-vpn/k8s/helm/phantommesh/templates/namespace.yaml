@@ -1,0 +1,11 @@
+{{- if .Values.global.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.global.namespace.name | default "phantom-mesh" }}
+  labels:
+    name: {{ .Values.global.namespace.name | default "phantom-mesh" }}
+    app: phantom-mesh
+  annotations:
+    description: "PhantomMesh VPN and Agent Swarm Namespace"
+{{- end }}

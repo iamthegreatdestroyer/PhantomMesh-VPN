@@ -1,0 +1,71 @@
+# Promtail Configuration for PhantomMesh Log Aggregation
+# ====================================================
+# Collects structured logs from all PhantomMesh components
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # PhantomMesh VPN Core (Rust) logs
+  - job_name: phantom-vpn-core
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: phantom-vpn-core
+          service: vpn-node
+          __path__: /tmp/phantom-logs/vpn.log
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            message: message
+            component: component
+      - labels:
+          level:
+          component:
+
+  # Agent Swarm logs
+  - job_name: phantom-agent-swarm
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: phantom-agent-swarm
+          service: agent-orchestrator
+          __path__: /tmp/phantom-logs/agents.log
+    pipeline_stages:
+      - json:
+          expressions:
+            asctime: asctime
+            name: name
+            levelname: levelname
+            message: message
+      - labels:
+          level: levelname
+          logger: name
+
+  # System logs
+  - job_name: phantom-system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: phantom-system
+          service: system
+          __path__: /var/log/syslog
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<hostname>\w+)\s+(?P<process>\w+)\[(?P<pid>\d+)\]:\s+(?P<message>.+)$'
+      - labels:
+          hostname:
+          process:
+          pid:

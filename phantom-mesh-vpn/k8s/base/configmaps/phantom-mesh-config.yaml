@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: phantom-mesh-config
+  namespace: phantom-mesh
+data:
+  mesh_configs.yaml: |
+    # PhantomMesh Network Configuration
+    # Copyright © 2025 Stephen Bilodeau. All rights reserved.
+
+    # Core mesh network settings
+    mesh:
+      name: "PhantomMesh-Primary"
+      version: "0.1.0"
+
+      # Network identity
+      network_id: "phantom-mesh-001"
+      subnet: "10.100.0.0/16"
+
+      # Protocol settings
+      protocol:
+        wireguard:
+          persistent_keepalive: 25
+          handshake_timeout_ms: 5000
+          rekey_after_messages: 1000000
+          rekey_after_time_secs: 7200
+
+        # ΣVault dimensional scatter settings
+        sigma_vault:
+          enabled: true
+          dimensions: 7
+          scatter_entropy_bits: 256
+          rotation_interval_secs: 300
+
+    # Routing configuration
+    routing:
+      mode: semantic # semantic | geographic | latency
+
+      # Semantic routing weights
+      semantic:
+        trust_score_weight: 0.4
+        latency_weight: 0.3
+        bandwidth_weight: 0.2
+        reliability_weight: 0.1
+
+      # Route optimization settings
+      optimization:
+        enabled: true
+        interval_secs: 60
+        min_improvement_percent: 5
+        max_hops: 5
+
+    # Security configuration
+    security:
+      # Cryptographic settings
+      crypto:
+        key_exchange: kyber1024 # Quantum-resistant
+        symmetric_cipher: aes256gcm
+        hash_function: blake3
+
+      # Threat detection
+      threat_engine:
+        enabled: true
+        anomaly_threshold: 0.85
+        quarantine_duration_secs: 3600
+
+  node_profiles.yaml: |
+    # Node Profiles Configuration
+    profiles:
+      primary:
+        role: primary
+        capabilities:
+          - routing
+          - orchestration
+          - security
+        resources:
+          cpu: "2000m"
+          memory: "4Gi"
+
+      secondary:
+        role: secondary
+        capabilities:
+          - routing
+          - monitoring
+        resources:
+          cpu: "1000m"
+          memory: "2Gi"
+
+      edge:
+        role: edge
+        capabilities:
+          - client-connection
+        resources:
+          cpu: "500m"
+          memory: "1Gi"
+
+  logging.yml: |
+    version: 1
+    disable_existing_loggers: false
+
+    formatters:
+      json:
+        class: pythonjsonlogger.jsonlogger.JsonFormatter
+        format: "%(asctime)s %(name)s %(levelname)s %(message)s"
+
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: json
+        stream: ext://sys.stdout
+
+      file:
+        class: logging.FileHandler
+        formatter: json
+        filename: /var/log/phantom-mesh/app.log
+
+    root:
+      level: INFO
+      handlers: [console, file]
+
+    loggers:
+      phantom_mesh:
+        level: DEBUG
+        handlers: [console, file]
+        propagate: no
+
+  alert_rules.yml: |
+    groups:
+    - name: phantom-mesh-alerts
+      rules:
+      - alert: VPNTunnelDown
+        expr: up{job="phantom-vpn-core"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "VPN tunnel is down"
+          description: "VPN tunnel has been down for more than 5 minutes"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(phantom_vpn_latency_bucket[5m])) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High VPN latency detected"
+          description: "95th percentile latency is above 100ms"
+
+      - alert: AgentSwarmUnhealthy
+        expr: up{job="phantom-agent-swarm"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Agent swarm is unhealthy"
+          description: "Agent swarm orchestrator has been down for more than 5 minutes"

@@ -1,0 +1,115 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*"
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    build-release:
+        name: Build Release (${{ matrix.target }})
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                include:
+                    - target: x86_64-unknown-linux-gnu
+                      os: ubuntu-latest
+                    - target: x86_64-apple-darwin
+                      os: macos-latest
+                    - target: aarch64-apple-darwin
+                      os: macos-latest
+                    - target: x86_64-pc-windows-msvc
+                      os: windows-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-action@stable
+              with:
+                  targets: ${{ matrix.target }}
+
+            - name: Build release binary
+              run: cargo build --release --target ${{ matrix.target }}
+
+            - name: Create archive (Unix)
+              if: runner.os != 'Windows'
+              run: |
+                  cd target/${{ matrix.target }}/release
+                  tar -czvf ../../../phantom-mesh-${{ matrix.target }}.tar.gz phantom-node
+
+            - name: Create archive (Windows)
+              if: runner.os == 'Windows'
+              run: |
+                  cd target/${{ matrix.target }}/release
+                  7z a ../../../phantom-mesh-${{ matrix.target }}.zip phantom-node.exe
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: phantom-mesh-${{ matrix.target }}
+                  path: phantom-mesh-${{ matrix.target }}.*
+
+    publish-docker:
+        name: Publish Docker Images
+        runs-on: ubuntu-latest
+        needs: build-release
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Extract version
+              id: version
+              run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+            - name: Build and push node image
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile.node
+                  push: true
+                  tags: |
+                      ghcr.io/${{ github.repository }}/phantom-node:${{ steps.version.outputs.VERSION }}
+                      ghcr.io/${{ github.repository }}/phantom-node:latest
+
+            - name: Build and push agent image
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile.agents
+                  push: true
+                  tags: |
+                      ghcr.io/${{ github.repository }}/phantom-agents:${{ steps.version.outputs.VERSION }}
+                      ghcr.io/${{ github.repository }}/phantom-agents:latest
+
+    create-release:
+        name: Create GitHub Release
+        runs-on: ubuntu-latest
+        needs: [build-release, publish-docker]
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Download all artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: artifacts
+
+            - name: Create Release
+              uses: softprops/action-gh-release@v1
+              with:
+                  files: artifacts/**/*
+                  generate_release_notes: true
+                  draft: false
+                  prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}

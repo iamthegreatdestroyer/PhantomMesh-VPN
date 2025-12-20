@@ -1,0 +1,248 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "PhantomMesh VPN Monitoring",
+    "tags": ["phantommesh", "vpn", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "VPN Tunnel Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"phantom-vpn-core\"}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "options": {
+                  "0": {
+                    "text": "DOWN",
+                    "color": "red"
+                  },
+                  "1": {
+                    "text": "UP",
+                    "color": "green"
+                  }
+                },
+                "type": "value"
+              }
+            ]
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "Agent Swarm Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"phantom-agent-swarm\"}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "options": {
+                  "0": {
+                    "text": "DOWN",
+                    "color": "red"
+                  },
+                  "1": {
+                    "text": "UP",
+                    "color": "green"
+                  }
+                },
+                "type": "value"
+              }
+            ]
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        }
+      },
+      {
+        "id": 3,
+        "title": "VPN Tunnel Traffic",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(phantom_vpn_packets_total[5m])",
+            "legendFormat": "Packets/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(phantom_vpn_bytes_total[5m]) / 1024 / 1024",
+            "legendFormat": "MB/sec",
+            "refId": "B"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 8
+        }
+      },
+      {
+        "id": 4,
+        "title": "VPN Tunnel Latency",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(phantom_vpn_tunnel_latency_seconds_bucket[5m])) * 1000",
+            "legendFormat": "95th percentile (ms)",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(phantom_vpn_tunnel_latency_seconds_bucket[5m])) * 1000",
+            "legendFormat": "50th percentile (ms)",
+            "refId": "B"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 16
+        }
+      },
+      {
+        "id": 5,
+        "title": "Agent Task Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(phantom_agent_task_duration_seconds_bucket[5m]))",
+            "legendFormat": "95th percentile task duration",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(phantom_agent_tasks_completed_total[5m])",
+            "legendFormat": "Tasks completed/sec",
+            "refId": "B"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 24
+        }
+      },
+      {
+        "id": 6,
+        "title": "Threat Detection Events",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(phantom_threat_events_total[5m])",
+            "legendFormat": "Threat events/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 32
+        }
+      },
+      {
+        "id": 7,
+        "title": "ΣVault Scattering Efficiency",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "phantom_sigma_vault_scattering_efficiency",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 1,
+            "unit": "percentunit"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 32
+        }
+      },
+      {
+        "id": 8,
+        "title": "System Resources",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "CPU Usage %",
+            "refId": "A"
+          },
+          {
+            "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+            "legendFormat": "Memory Usage %",
+            "refId": "B"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 40
+        }
+      },
+      {
+        "id": 9,
+        "title": "Active Alerts",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "ALERTS{alertstate=\"firing\"}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 48
+        }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {},
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    },
+    "refresh": "30s",
+    "schemaVersion": 27,
+    "version": 0,
+    "links": []
+  }
+}

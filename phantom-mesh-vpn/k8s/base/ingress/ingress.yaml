@@ -1,0 +1,81 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: phantom-mesh-ingress
+  namespace: phantom-mesh
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - vpn.phantom-mesh.example.com
+        - grafana.phantom-mesh.example.com
+      secretName: phantom-mesh-tls
+  rules:
+    - host: vpn.phantom-mesh.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-node
+                port:
+                  number: 8080
+    - host: grafana.phantom-mesh.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: phantom-mesh-api-ingress
+  namespace: phantom-mesh
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: phantom-api-auth
+    nginx.ingress.kubernetes.io/auth-realm: "PhantomMesh API"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.phantom-mesh.example.com
+      secretName: phantom-api-tls
+  rules:
+    - host: api.phantom-mesh.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-node
+                port:
+                  number: 8080
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: agent-swarm
+                port:
+                  number: 8000
+          - path: /discovery
+            pathType: Prefix
+            backend:
+              service:
+                name: discovery
+                port:
+                  number: 8081

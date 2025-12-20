@@ -1,0 +1,58 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "phantom-mesh-agents"
+version = "0.1.0"
+description = "Elite Agent Swarm for PhantomMesh VPN orchestration"
+authors = [{ name = "Stephen Bilodeau", email = "stephen@phantommesh.io" }]
+license = { text = "GPL-3.0" }
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Rust",
+    "Topic :: System :: Networking",
+    "Topic :: Security :: Cryptography",
+]
+dependencies = [
+    "asyncio>=3.4",
+    "aiohttp>=3.9",
+    "pydantic>=2.5",
+    "structlog>=24.1",
+    "python-json-logger>=2.0",
+    "prometheus-client>=0.19",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",  # For threat pattern analysis
+    "networkx>=3.2",       # Mesh topology analysis
+    "cryptography>=42.0",
+    "python-dotenv>=1.0",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "mypy>=1.8",
+    "ruff>=0.1",
+    "black>=24.1",
+]
+simulation = [
+    "mininet>=2.3",
+    "scapy>=2.5",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "src/agent_swarm"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

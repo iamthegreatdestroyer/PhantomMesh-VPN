@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-node
+  namespace: phantom-mesh
+  labels:
+    app: phantom-node
+    component: vpn-core
+spec:
+  selector:
+    app: phantom-node
+  ports:
+    - name: wireguard
+      port: 51820
+      targetPort: 51820
+      protocol: UDP
+    - name: api
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-swarm
+  namespace: phantom-mesh
+  labels:
+    app: agent-swarm
+    component: orchestrator
+spec:
+  selector:
+    app: agent-swarm
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery
+  namespace: phantom-mesh
+  labels:
+    app: discovery
+    component: service-discovery
+spec:
+  selector:
+    app: discovery
+  ports:
+    - name: discovery-api
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: phantom-mesh
+  labels:
+    app: prometheus
+    component: monitoring
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: phantom-mesh
+  labels:
+    app: grafana
+    component: dashboard
+spec:
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+  type: ClusterIP

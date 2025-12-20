@@ -1,0 +1,134 @@
+# Istio Service Mesh Configuration for PhantomMesh
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: phantom-mesh-gateway
+  namespace: phantom-mesh
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - vpn.phantom-mesh.example.com
+        - grafana.phantom-mesh.example.com
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: phantom-mesh-tls
+      hosts:
+        - vpn.phantom-mesh.example.com
+        - grafana.phantom-mesh.example.com
+    - port:
+        number: 51820
+        name: wireguard
+        protocol: UDP
+      hosts:
+        - vpn.phantom-mesh.example.com
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: phantom-node-vs
+  namespace: phantom-mesh
+spec:
+  hosts:
+    - vpn.phantom-mesh.example.com
+  gateways:
+    - phantom-mesh-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: phantom-node
+            port:
+              number: 8080
+  udp:
+    - match:
+        - port: 51820
+      route:
+        - destination:
+            host: phantom-node
+            port:
+              number: 51820
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grafana-vs
+  namespace: phantom-mesh
+spec:
+  hosts:
+    - grafana.phantom-mesh.example.com
+  gateways:
+    - phantom-mesh-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: grafana
+            port:
+              number: 3000
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: phantom-mesh-dr
+  namespace: phantom-mesh
+spec:
+  host: phantom-node
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 10
+        maxRequestsPerConnection: 10
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 10s
+      baseEjectionTime: 30s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: phantom-mesh
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: phantom-mesh-authz
+  namespace: phantom-mesh
+spec:
+  selector:
+    matchLabels:
+      app: phantom-node
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              ["cluster.local/ns/phantom-mesh/sa/phantom-service-account"]
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/api/*", "/health", "/ready"]

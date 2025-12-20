@@ -1,0 +1,127 @@
+groups:
+  - name: phantommesh_alerts
+    rules:
+      # VPN Tunnel Alerts
+      - alert: VPNTunnelDown
+        expr: up{job="phantom-vpn-core"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: vpn-core
+        annotations:
+          summary: "VPN tunnel is down"
+          description: "VPN tunnel has been down for more than 1 minute"
+
+      - alert: VPNTunnelHighLatency
+        expr: histogram_quantile(0.95, rate(phantom_vpn_tunnel_latency_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: vpn-core
+        annotations:
+          summary: "High VPN tunnel latency detected"
+          description: "95th percentile tunnel latency > 100ms for 5 minutes"
+
+      - alert: VPNTunnelPacketLoss
+        expr: rate(phantom_vpn_packets_dropped_total[5m]) / rate(phantom_vpn_packets_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: vpn-core
+        annotations:
+          summary: "High packet loss in VPN tunnel"
+          description: "Packet loss rate > 5% for 2 minutes"
+
+      # Agent Swarm Alerts
+      - alert: AgentSwarmDown
+        expr: up{job="phantom-agent-swarm"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: agent-swarm
+        annotations:
+          summary: "Agent swarm orchestrator is down"
+          description: "Agent swarm has been down for more than 2 minutes"
+
+      - alert: AgentPerformanceDegraded
+        expr: rate(phantom_agent_task_duration_seconds{quantile="0.95"}[10m]) > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: agent-swarm
+        annotations:
+          summary: "Agent performance degraded"
+          description: "95th percentile agent task duration > 30s for 5 minutes"
+
+      - alert: AgentMemoryHigh
+        expr: phantom_agent_memory_usage_bytes / phantom_agent_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: agent-swarm
+        annotations:
+          summary: "High agent memory usage"
+          description: "Agent memory usage > 90% for 5 minutes"
+
+      # Threat Detection Alerts
+      - alert: ThreatDetectionHigh
+        expr: rate(phantom_threat_events_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: critical
+          service: threat-engine
+        annotations:
+          summary: "High threat detection rate"
+          description: "Threat events > 10 per minute for 1 minute"
+
+      - alert: ThreatResponseSlow
+        expr: histogram_quantile(0.95, rate(phantom_threat_response_time_seconds_bucket[5m])) > 5
+        for: 3m
+        labels:
+          severity: warning
+          service: threat-engine
+        annotations:
+          summary: "Slow threat response time"
+          description: "95th percentile threat response time > 5s for 3 minutes"
+
+      # ΣVault Alerts
+      - alert: SigmaVaultScatteringLow
+        expr: phantom_sigma_vault_scattering_efficiency < 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: sigma-vault
+        annotations:
+          summary: "Low ΣVault scattering efficiency"
+          description: "Scattering efficiency < 80% for 5 minutes"
+
+      # System Resource Alerts
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage > 90% for 5 minutes"
+
+      - alert: HighMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage > 90% for 5 minutes"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Low disk space"
+          description: "Available disk space < 10% for 5 minutes"

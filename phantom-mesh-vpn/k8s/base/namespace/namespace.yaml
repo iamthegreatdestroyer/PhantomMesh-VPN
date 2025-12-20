@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phantom-mesh
+  labels:
+    name: phantom-mesh
+    app: phantom-mesh
+  annotations:
+    description: "PhantomMesh VPN and Agent Swarm Namespace"

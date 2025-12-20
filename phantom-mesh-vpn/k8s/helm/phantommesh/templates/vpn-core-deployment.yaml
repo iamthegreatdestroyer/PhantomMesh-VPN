@@ -1,0 +1,95 @@
+{{- if .Values.vpnCore.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "phantommesh.fullname" . }}-vpn-core
+  labels:
+    {{- include "phantommesh.labels" . | nindent 4 }}
+    app: phantom-node
+    component: vpn-core
+spec:
+  replicas: {{ .Values.vpnCore.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "phantommesh.selectorLabels" . | nindent 6 }}
+      app: phantom-node
+  template:
+    metadata:
+      labels:
+        {{- include "phantommesh.selectorLabels" . | nindent 8 }}
+        app: phantom-node
+        component: vpn-core
+    spec:
+      serviceAccountName: {{ include "phantommesh.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.vpnCore.securityContext | nindent 8 }}
+      containers:
+      - name: phantom-node
+        image: {{ .Values.global.imageRegistry }}{{ .Values.vpnCore.image.repository }}:{{ .Values.vpnCore.image.tag | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.vpnCore.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.vpnCore.securityContext | nindent 10 }}
+        ports:
+        - containerPort: {{ .Values.vpnCore.service.apiPort }}
+          protocol: TCP
+          name: api
+        - containerPort: {{ .Values.vpnCore.service.port }}
+          protocol: UDP
+          name: wireguard
+        env:
+        - name: RUST_LOG
+          value: "info,phantom_mesh=debug"
+        - name: PHANTOM_MODE
+          value: "primary"
+        - name: AGENT_SWARM_ENABLED
+          value: "true"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/phantom-mesh
+          readOnly: true
+        - name: state-volume
+          mountPath: /var/lib/phantom-mesh
+        - name: logs-volume
+          mountPath: /var/log/phantom-mesh
+        resources:
+          {{- toYaml .Values.vpnCore.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.vpnCore.service.apiPort }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: {{ .Values.vpnCore.service.apiPort }}
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config-volume
+        configMap:
+          name: {{ include "phantommesh.fullname" . }}-config
+      - name: state-volume
+        persistentVolumeClaim:
+          claimName: {{ include "phantommesh.fullname" . }}-state-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: {{ include "phantommesh.fullname" . }}-logs-pvc
+      {{- with .Values.vpnCore.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.vpnCore.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.vpnCore.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

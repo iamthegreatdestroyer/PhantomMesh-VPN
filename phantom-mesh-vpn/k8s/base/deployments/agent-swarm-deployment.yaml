@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-swarm
+  namespace: phantom-mesh
+  labels:
+    app: agent-swarm
+    component: orchestrator
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: agent-swarm
+  template:
+    metadata:
+      labels:
+        app: agent-swarm
+        component: orchestrator
+    spec:
+      serviceAccountName: phantom-service-account
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: agent-swarm
+          image: phantommesh/agent-swarm:latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+              name: metrics
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: PHANTOM_ORCHESTRATOR_MODE
+              value: "autonomous"
+            - name: MNEMONIC_CACHE_SIZE
+              value: "10000"
+            - name: SIGMA_VAULT_ENDPOINT
+              value: "http://discovery.phantom-mesh.svc.cluster.local:8081/sigma"
+            - name: SKIP_SIGMA_VAULT
+              value: "false"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/phantom-mesh
+              readOnly: true
+            - name: agent-code-volume
+              mountPath: /app/agents
+              readOnly: true
+            - name: state-volume
+              mountPath: /var/lib/phantom-agents
+            - name: logs-volume
+              mountPath: /var/log/phantom-mesh
+            - name: secrets-volume
+              mountPath: /etc/phantom-secrets
+              readOnly: true
+            - name: tmp-volume
+              mountPath: /tmp
+          command: ["python", "-m", "agents.phantom_orchestrator"]
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: config-volume
+          configMap:
+            name: phantom-mesh-config
+        - name: agent-code-volume
+          configMap:
+            name: agent-code-config
+        - name: secrets-volume
+          secret:
+            secretName: phantom-mesh-secrets
+        - name: state-volume
+          persistentVolumeClaim:
+            claimName: agent-state-pvc
+        - name: logs-volume
+          persistentVolumeClaim:
+            claimName: phantom-logs-pvc
+        - name: tmp-volume
+          emptyDir: {}
+      nodeSelector:
+        kubernetes.io/os: linux
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: agent-swarm
+                topologyKey: kubernetes.io/hostname

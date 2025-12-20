@@ -1,0 +1,129 @@
+# PhantomMesh Network Configuration
+# Copyright © 2025 Stephen Bilodeau. All rights reserved.
+
+# Core mesh network settings
+mesh:
+  name: "PhantomMesh-Primary"
+  version: "0.1.0"
+
+  # Network identity
+  network_id: "phantom-mesh-001"
+  subnet: "10.100.0.0/16"
+
+  # Protocol settings
+  protocol:
+    wireguard:
+      persistent_keepalive: 25
+      handshake_timeout_ms: 5000
+      rekey_after_messages: 1000000
+      rekey_after_time_secs: 7200
+
+    # ΣVault dimensional scatter settings
+    sigma_vault:
+      enabled: true
+      dimensions: 7
+      scatter_entropy_bits: 256
+      rotation_interval_secs: 300
+
+# Routing configuration
+routing:
+  mode: semantic # semantic | geographic | latency
+
+  # Semantic routing weights
+  semantic:
+    trust_score_weight: 0.4
+    latency_weight: 0.3
+    bandwidth_weight: 0.2
+    reliability_weight: 0.1
+
+  # Route optimization settings
+  optimization:
+    enabled: true
+    interval_secs: 60
+    min_improvement_percent: 5
+    max_hops: 5
+
+# Security configuration
+security:
+  # Cryptographic settings
+  crypto:
+    key_exchange: kyber1024 # Quantum-resistant
+    signing: dilithium3
+    symmetric: chacha20-poly1305
+    hash: blake3
+
+  # Key management
+  keys:
+    rotation_interval_secs: 3600
+    evolution_enabled: true
+    backup_keys: 3
+
+  # Threat detection
+  threat_detection:
+    enabled: true
+    signature_update_interval_secs: 3600
+    anomaly_threshold: 0.85
+    quarantine_duration_secs: 300
+
+# Agent swarm configuration
+agents:
+  # Orchestrator settings
+  orchestrator:
+    mode: autonomous
+    health_check_interval_secs: 10
+    task_timeout_secs: 30
+
+  # MNEMONIC cache settings
+  mnemonic:
+    max_size: 10000
+    eviction_policy: priority_lru
+    persistence_enabled: true
+    persistence_path: /var/lib/phantom-mesh/mnemonic.db
+
+  # Individual agent configurations
+  agent_configs:
+    apex:
+      priority: 10
+      max_concurrent_tasks: 5
+
+    fortress:
+      priority: 9
+      scan_interval_secs: 30
+      threat_response_mode: automatic
+
+    cipher:
+      priority: 9
+      key_cache_size: 100
+
+    velocity:
+      priority: 8
+      optimization_interval_secs: 60
+
+    stream:
+      priority: 7
+      sample_rate: 0.1
+      window_size_secs: 300
+
+# Observability configuration
+observability:
+  metrics:
+    enabled: true
+    port: 9090
+    path: /metrics
+    scrape_interval_secs: 15
+
+  logging:
+    level: info
+    format: json
+    output: stdout
+    file:
+      enabled: true
+      path: /var/log/phantom-mesh/node.log
+      rotation: daily
+      retention_days: 30
+
+  tracing:
+    enabled: true
+    sampling_rate: 0.1
+    exporter: otlp
+    endpoint: http://localhost:4317

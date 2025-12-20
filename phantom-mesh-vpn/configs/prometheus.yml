@@ -1,0 +1,48 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # Add Alertmanager if needed
+
+scrape_configs:
+  # PhantomMesh VPN Core (Rust)
+  - job_name: "phantom-vpn-core"
+    static_configs:
+      - targets: ["phantom-node:8080"]
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+
+  # Agent Swarm Orchestrator (Python)
+  - job_name: "phantom-agent-swarm"
+    static_configs:
+      - targets: ["agent-swarm:8000"]
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+
+  # Node Exporters for system metrics
+  - job_name: "phantom-nodes"
+    static_configs:
+      - targets:
+          - "node-exporter-phantom:9100"
+          - "node-exporter-agents:9100"
+    scrape_interval: 30s
+
+  # Service Discovery for dynamic agents
+  - job_name: "phantom-dynamic-agents"
+    bearer_token_file: /etc/prometheus/service_token
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/dynamic_agents.yml
+        refresh_interval: 30s
+
+  # Prometheus itself
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

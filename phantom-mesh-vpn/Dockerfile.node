@@ -1,0 +1,57 @@
+# Dockerfile for PhantomMesh VPN Node
+FROM rust:1.80-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy Cargo files
+COPY Cargo.toml Cargo.lock ./
+
+# Copy source code
+COPY src/ ./src/
+
+# Build the application
+RUN cargo build --release
+
+# Runtime stage
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    iproute2 \
+    iptables \
+    wireguard-tools \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create phantom user
+RUN useradd --create-home --shell /bin/bash phantom
+
+# Create log directory
+RUN mkdir -p /var/log/phantom-mesh && chown phantom:phantom /var/log/phantom-mesh
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/phantom-node /usr/local/bin/phantom-node
+
+# Set working directory
+WORKDIR /home/phantom
+
+# Switch to non-root user
+USER phantom
+
+# Expose ports
+EXPOSE 51820/udp 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Start the VPN node
+CMD ["phantom-node"]

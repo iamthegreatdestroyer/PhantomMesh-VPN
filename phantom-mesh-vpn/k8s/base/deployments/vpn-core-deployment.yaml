@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phantom-node
+  namespace: phantom-mesh
+  labels:
+    app: phantom-node
+    component: vpn-core
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: phantom-node
+  template:
+    metadata:
+      labels:
+        app: phantom-node
+        component: vpn-core
+    spec:
+      serviceAccountName: phantom-service-account
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: phantom-node
+          image: phantommesh/phantom-node:latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              add: ["NET_ADMIN", "SYS_MODULE"]
+          ports:
+            - containerPort: 51820
+              protocol: UDP
+              name: wireguard
+            - containerPort: 8080
+              protocol: TCP
+              name: api
+          env:
+            - name: RUST_LOG
+              value: "info,phantom_mesh=debug"
+            - name: PHANTOM_MODE
+              value: "primary"
+            - name: AGENT_SWARM_ENABLED
+              value: "true"
+            - name: SIGMA_VAULT_ENDPOINT
+              value: "http://discovery.phantom-mesh.svc.cluster.local:8081/sigma"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/phantom-mesh
+              readOnly: true
+            - name: state-volume
+              mountPath: /var/lib/phantom-mesh
+            - name: logs-volume
+              mountPath: /var/log/phantom-mesh
+            - name: secrets-volume
+              mountPath: /etc/phantom-secrets
+              readOnly: true
+            - name: tun-device
+              mountPath: /dev/net/tun
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: config-volume
+          configMap:
+            name: phantom-mesh-config
+        - name: secrets-volume
+          secret:
+            secretName: phantom-mesh-secrets
+        - name: state-volume
+          persistentVolumeClaim:
+            claimName: phantom-state-pvc
+        - name: logs-volume
+          persistentVolumeClaim:
+            claimName: phantom-logs-pvc
+        - name: tun-device
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-type
+                    operator: In
+                    values:
+                      - vpn-core
