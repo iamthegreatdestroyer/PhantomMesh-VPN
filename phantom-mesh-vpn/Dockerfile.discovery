@@ -41,7 +41,7 @@ RUN mkdir -p /home/phantom/logs && chown -R phantom:phantom /home/phantom/logs
 USER phantom
 
 # Expose discovery port
-EXPOSE 8081
+EXPOSE 24530 24531
 
 # Default command
 CMD ["python", "-m", "agents.discovery"]

@@ -6,6 +6,8 @@
 //! Licensed under GPL-3.0 with proprietary agent clauses.
 
 // Re-export main modules
+pub mod agent_framework;
+pub mod load_test;
 pub mod metrics;
 pub mod security_layer;
 pub mod vpn_core;

@@ -21,8 +21,8 @@ services:
     networks:
       - phantom-mesh-net
     ports:
-      - "51820:51820/udp" # WireGuard
-      - "8080:8080" # API Gateway
+      - "24510:51820/udp" # WireGuard VPN
+      - "24511:8080" # API Gateway
     environment:
       - RUST_LOG=info,phantom_mesh=debug
       - PHANTOM_MODE=primary
@@ -41,7 +41,7 @@ services:
     networks:
       - phantom-mesh-net
     ports:
-      - "8000:8000" # Metrics and health
+      - "24520:8000" # Agent Swarm Metrics
     environment:
       - PYTHONUNBUFFERED=1
       - PHANTOM_ORCHESTRATOR_MODE=autonomous
@@ -67,7 +67,7 @@ services:
     networks:
       - phantom-mesh-net
     ports:
-      - "8081:8081" # Discovery API
+      - "24530:8081" # Discovery API
     environment:
       - PYTHONUNBUFFERED=1
       - DISCOVERY_MODE=service
@@ -84,7 +84,7 @@ services:
     networks:
       - phantom-mesh-net
     ports:
-      - "9090:9090"
+      - "24540:9090"
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
@@ -99,7 +99,7 @@ services:
     networks:
       - phantom-mesh-net
     ports:
-      - "3000:3000"
+      - "24541:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=phantom_secure_2025
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -116,7 +116,7 @@ services:
     networks:
       - phantom-mesh-net
     ports:
-      - "3100:3100"
+      - "24550:3100"
     command: -config.file=/etc/loki/local-config.yaml
     restart: unless-stopped
 
@@ -151,7 +151,7 @@ services:
     networks:
       - phantom-mesh-net
     ports:
-      - "9100:9100"
+      - "24560:9100"
     restart: unless-stopped
 
   node-exporter-agents:
@@ -169,7 +169,7 @@ services:
     networks:
       - phantom-mesh-net
     ports:
-      - "9101:9100"
+      - "24561:9100"
     restart: unless-stopped
 
 networks:

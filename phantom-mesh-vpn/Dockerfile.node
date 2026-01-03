@@ -47,7 +47,7 @@ WORKDIR /home/phantom
 USER phantom
 
 # Expose ports
-EXPOSE 51820/udp 8080
+EXPOSE 24510/udp 24511
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
