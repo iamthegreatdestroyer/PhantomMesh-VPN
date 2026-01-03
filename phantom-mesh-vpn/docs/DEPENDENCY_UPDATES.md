@@ -1,4 +1,5 @@
 # PhantomMesh-VPN Dependency Update Recommendations
+
 # Generated: January 3, 2026
 
 ## Summary
@@ -18,6 +19,7 @@ All critical security vulnerabilities have been patched. No immediate action req
 ### Priority 2: Security Patches (This Month)
 
 #### 1. x25519-dalek Version
+
 **Current:** 2.0.0-rc3 (Release Candidate)  
 **Recommended:** 2.0.0 (Stable - when released) or 1.2.2
 
@@ -36,6 +38,7 @@ x25519-dalek = "1.2.2"
 **Rationale:** Release candidates may have breaking changes. Stable version provides better compatibility.
 
 **Testing Required:**
+
 - Run full test suite
 - Verify key exchange correctness
 - Check performance benchmarks
@@ -47,6 +50,7 @@ x25519-dalek = "1.2.2"
 ### Priority 3: Feature/Performance Updates (Next Quarter)
 
 #### 1. tokio Version Update
+
 **Current:** 1.35  
 **Latest Stable:** 1.35+ or 1.x
 
@@ -60,6 +64,7 @@ tokio = { version = "1.35", features = ["full"] }
 **Action:** Monitor release notes quarterly.
 
 #### 2. sysinfo Version
+
 **Current:** 0.30  
 **Latest:** 0.30+ (latest 0.x line)
 
@@ -76,6 +81,7 @@ sysinfo = "0.30"
 **Action:** Review release notes before updating.
 
 #### 3. prometheus Version
+
 **Current:** 0.13  
 **Latest:** 0.13+
 
@@ -99,6 +105,7 @@ All critical security vulnerabilities are patched.
 ### Priority 2: Version Compatibility (This Quarter)
 
 #### 1. Python Version Requirement
+
 **Current:** Python 3.11+  
 **Recommended:** Add Python 3.12 support
 
@@ -106,7 +113,8 @@ All critical security vulnerabilities are patched.
 requires-python = ">=3.11,<3.13"  # Add Python 3.12 support
 ```
 
-**Action:** 
+**Action:**
+
 1. Update classifiers in pyproject.toml
 2. Test on Python 3.12
 3. Verify all dependencies support 3.12
@@ -117,6 +125,7 @@ python3.12 -m pytest tests/
 ```
 
 #### 2. pydantic Version
+
 **Current:** 2.5+  
 **Recommended:** Monitor for 2.6+ (next minor)
 
@@ -126,12 +135,14 @@ pydantic = ">=2.5,<4.0"  # Allow 2.x updates
 
 **Rationale:** Pydantic releases regularly with performance improvements.
 
-**Action:** 
+**Action:**
+
 1. Check release notes quarterly
 2. Test compatibility
 3. Update if significant performance improvements
 
 #### 3. cryptography Version
+
 **Current:** 42.0+  
 **Recommended:** Monitor for critical updates
 
@@ -144,6 +155,7 @@ cryptography = ">=42.0,<44.0"
 **Action:** Monitor for security patches weekly.
 
 #### 4. pytest & Testing
+
 **Current:** 7.4+, pytest-asyncio 0.23+
 
 ```toml
@@ -161,6 +173,7 @@ pytest-cov = ">=4.1"
 ## 📋 Recommended Updates by Category
 
 ### Immediate Updates (Week 1)
+
 ```bash
 # Rust
 cargo update -p x25519-dalek    # If rc → stable available
@@ -177,6 +190,7 @@ pytest tests/ -v
 ```
 
 ### Monthly Updates (Each Month)
+
 ```bash
 # Check for security updates
 cargo audit
@@ -188,6 +202,7 @@ pip install --upgrade -r requirements.txt
 ```
 
 ### Quarterly Updates (Every 3 Months)
+
 ```bash
 # Full dependency audit
 bash scripts/audits/p0-003-dependency-audit.sh
@@ -204,11 +219,13 @@ pip install --upgrade --upgrade-strategy eager -r requirements.txt
 ## 🔒 Security-Critical Packages
 
 ### Must Monitor Weekly
+
 1. **cryptography** — Cryptographic operations
 2. **tokio** — Async runtime
 3. **ring** — Cryptography library
 
 ### Must Update on CVE
+
 1. Any package with published CVE
 2. Cryptographic libraries
 3. Networking libraries
@@ -216,6 +233,7 @@ pip install --upgrade --upgrade-strategy eager -r requirements.txt
 ### Monitoring Tools
 
 #### Rust
+
 ```bash
 # Weekly audit
 cargo audit
@@ -229,6 +247,7 @@ cargo install cargo-audit cargo-outdated cargo-deny
 ```
 
 #### Python
+
 ```bash
 # Weekly audit
 pip-audit
@@ -267,12 +286,12 @@ MAJOR updates (1.0.0 → 2.0.0)
 
 ### Risk Assessment Matrix
 
-| Update Type | Rust | Python | Timeline |
-|-------------|------|--------|----------|
-| Security patch | Immediate | Immediate | < 24h |
-| Bug fix | Immediate | Immediate | < 1 week |
-| Minor feature | Monthly | Monthly | < 1 month |
-| Major version | Quarterly | Quarterly | < 3 months |
+| Update Type    | Rust      | Python    | Timeline   |
+| -------------- | --------- | --------- | ---------- |
+| Security patch | Immediate | Immediate | < 24h      |
+| Bug fix        | Immediate | Immediate | < 1 week   |
+| Minor feature  | Monthly   | Monthly   | < 1 month  |
+| Major version  | Quarterly | Quarterly | < 3 months |
 
 ---
 
@@ -298,6 +317,7 @@ Risk Impact
 ```
 
 **Interpretation:**
+
 - **Top-right quadrant:** Update immediately
 - **Bottom-left quadrant:** Can delay, plan for next cycle
 - **Diagonal:** Balance urgency with impact
@@ -383,16 +403,19 @@ When CVE is discovered:
 ## 📈 Metrics to Track
 
 ### Update Frequency
+
 - Average time from release to update
 - Number of major updates per quarter
 - Security patch response time
 
 ### Dependency Health
+
 - Mean age of dependencies
 - Number of outdated packages
 - CVE exposure time
 
 ### Quality Metrics
+
 - Test pass rate after updates
 - Performance regression detection
 - Binary size impact
@@ -410,22 +433,22 @@ When CVE is discovered:
 
 ## 📋 Update Schedule
 
-| Month | Action | Status |
-|-------|--------|--------|
-| January | Security audit | ✅ P0-003 |
-| February | Apply patches | ⏳ Pending |
-| March | Minor updates | ⏳ Pending |
-| April | Full audit | ⏳ Pending |
-| May | Major reviews | ⏳ Pending |
-| June | Compliance check | ⏳ Pending |
-| July | Security audit | ⏳ Pending |
-| August | Apply patches | ⏳ Pending |
-| September | Minor updates | ⏳ Pending |
-| October | Full audit | ⏳ Pending |
-| November | Major reviews | ⏳ Pending |
-| December | Year-end compliance | ⏳ Pending |
+| Month     | Action              | Status     |
+| --------- | ------------------- | ---------- |
+| January   | Security audit      | ✅ P0-003  |
+| February  | Apply patches       | ⏳ Pending |
+| March     | Minor updates       | ⏳ Pending |
+| April     | Full audit          | ⏳ Pending |
+| May       | Major reviews       | ⏳ Pending |
+| June      | Compliance check    | ⏳ Pending |
+| July      | Security audit      | ⏳ Pending |
+| August    | Apply patches       | ⏳ Pending |
+| September | Minor updates       | ⏳ Pending |
+| October   | Full audit          | ⏳ Pending |
+| November  | Major reviews       | ⏳ Pending |
+| December  | Year-end compliance | ⏳ Pending |
 
 ---
 
-*Next Review: April 3, 2026*  
-*Last Updated: January 3, 2026*
+_Next Review: April 3, 2026_  
+_Last Updated: January 3, 2026_

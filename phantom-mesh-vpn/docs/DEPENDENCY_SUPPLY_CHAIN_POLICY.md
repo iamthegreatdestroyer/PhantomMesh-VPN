@@ -16,6 +16,7 @@ This policy establishes supply chain security practices for all dependencies use
 ## 2. Scope
 
 This policy applies to:
+
 - All direct dependencies (Rust and Python)
 - All transitive dependencies
 - Development and production dependencies
@@ -30,16 +31,19 @@ This policy applies to:
 Before adding any new dependency:
 
 1. **Security Review**
+
    - Check crate.io/PyPI for known vulnerabilities
    - Review dependency's security audit history
    - Verify no abandoned projects
 
 2. **License Review**
+
    - Confirm GPL-3.0 compatibility
    - Check for patent clauses
    - Document license terms
 
 3. **Maintenance Review**
+
    - Check last commit date
    - Review maintainer reputation
    - Assess community size
@@ -51,12 +55,12 @@ Before adding any new dependency:
 
 ### 3.2 Approval Authority
 
-| Dependency Type | Approver | Timeline |
-|-----------------|----------|----------|
-| Security library | CTO | 24 hours |
-| Core feature | Tech Lead | 48 hours |
-| Utility/Testing | Developer | 1 week |
-| Development only | Developer | 1 week |
+| Dependency Type  | Approver  | Timeline |
+| ---------------- | --------- | -------- |
+| Security library | CTO       | 24 hours |
+| Core feature     | Tech Lead | 48 hours |
+| Utility/Testing  | Developer | 1 week   |
+| Development only | Developer | 1 week   |
 
 ---
 
@@ -93,16 +97,17 @@ For each vulnerability:
 
 ### 4.3 Remediation Timeline
 
-| Severity | Timeline | Action |
-|----------|----------|--------|
-| Critical | < 24 hours | Immediate patch |
-| High | < 1 week | Priority update |
-| Medium | < 1 month | Scheduled update |
-| Low | < 3 months | Regular update |
+| Severity | Timeline   | Action           |
+| -------- | ---------- | ---------------- |
+| Critical | < 24 hours | Immediate patch  |
+| High     | < 1 week   | Priority update  |
+| Medium   | < 1 month  | Scheduled update |
+| Low      | < 3 months | Regular update   |
 
 ### 4.4 Communication
 
 For critical vulnerabilities:
+
 1. Incident declared
 2. Security team assembled
 3. Patch applied and tested
@@ -116,28 +121,31 @@ For critical vulnerabilities:
 
 ### 5.1 Update Frequency
 
-| Update Type | Frequency | Action |
-|-------------|-----------|--------|
+| Update Type      | Frequency | Action                |
+| ---------------- | --------- | --------------------- |
 | Security patches | Immediate | Apply + test + deploy |
-| Bug fixes | Monthly | Evaluate + apply |
-| Minor features | Quarterly | Evaluate + plan |
-| Major versions | Annually | Review + major test |
+| Bug fixes        | Monthly   | Evaluate + apply      |
+| Minor features   | Quarterly | Evaluate + plan       |
+| Major versions   | Annually  | Review + major test   |
 
 ### 5.2 Breaking Changes
 
 For dependencies with breaking changes:
 
 1. **Evaluation Period:** 2 weeks
+
    - Assess API changes
    - Estimate integration effort
    - Plan testing strategy
 
 2. **Planning Phase:** 2 weeks
+
    - Create upgrade plan
    - Assign resources
    - Schedule testing windows
 
 3. **Implementation:** 4 weeks
+
    - Update dependency
    - Refactor code
    - Full regression testing
@@ -157,12 +165,14 @@ For dependencies with breaking changes:
 All dependencies must be pinned:
 
 **Rust:**
+
 ```toml
 # Cargo.lock committed to version control
 # Ensures reproducible builds
 ```
 
 **Python:**
+
 ```txt
 # requirements.txt with exact versions
 # Generated from pyproject.toml dependencies
@@ -170,11 +180,11 @@ All dependencies must be pinned:
 
 ### 6.2 Lock File Management
 
-| File | Purpose | Update |
-|------|---------|--------|
-| Cargo.lock | Reproducible Rust builds | Committed to git |
-| requirements.txt | Exact Python versions | Auto-generated monthly |
-| requirements-dev.txt | Dev dependency pinning | Quarterly review |
+| File                 | Purpose                  | Update                 |
+| -------------------- | ------------------------ | ---------------------- |
+| Cargo.lock           | Reproducible Rust builds | Committed to git       |
+| requirements.txt     | Exact Python versions    | Auto-generated monthly |
+| requirements-dev.txt | Dev dependency pinning   | Quarterly review       |
 
 ---
 
@@ -183,16 +193,19 @@ All dependencies must be pinned:
 ### 7.1 Checksum Verification
 
 **Rust:**
+
 - cargo.io checksums (automatic)
 - Verify with: `cargo tree --locked`
 
 **Python:**
+
 - PyPI hashes (automatic with pip)
 - Verify with: `pip hash <package>`
 
 ### 7.2 Signature Verification
 
 For critical packages:
+
 - Verify PGP signatures where available
 - Document signing keys
 - Validate certificate chains
@@ -214,18 +227,21 @@ python -m pip install --require-hashes -r requirements.txt
 ### 8.1 Continuous Monitoring
 
 **Weekly:**
+
 ```bash
 cargo audit
 pip-audit
 ```
 
 **Monthly:**
+
 ```bash
 cargo outdated
 pip list --outdated
 ```
 
 **Quarterly:**
+
 ```bash
 bash scripts/audits/p0-003-dependency-audit.sh
 python scripts/audits/generate_audit_report.py
@@ -234,6 +250,7 @@ python scripts/audits/generate_audit_report.py
 ### 8.2 Audit Reports
 
 Generate and review:
+
 - Security audit reports
 - Outdated package list
 - License compliance report
@@ -259,6 +276,7 @@ Generate and review:
 ### 9.2 Compliance Standards
 
 Comply with:
+
 - OWASP Dependency-Check guidelines
 - NIST Cybersecurity Framework
 - SLSA framework requirements
@@ -270,11 +288,13 @@ Comply with:
 ### 10.1 Critical Vulnerability Response
 
 **Activation Criteria:**
+
 - CVSS >= 8.0
 - Public disclosure with exploit
 - Affects production code path
 
 **Response Process:**
+
 ```
 Minutes 0-15:  Alert & Assessment
 Minutes 15-30: Investigation & Planning
@@ -300,6 +320,7 @@ Level 4: Leadership (customer communication)
 ### 11.1 Required Documentation
 
 For each dependency:
+
 - Justification for inclusion
 - License information
 - Known security issues
@@ -308,36 +329,40 @@ For each dependency:
 
 ### 11.2 Locations
 
-| Document | Purpose | Location |
-|----------|---------|----------|
-| DEPENDENCY_ANALYSIS.md | Full inventory | docs/ |
-| DEPENDENCY_UPDATES.md | Update plan | docs/ |
-| Supply Chain Policy | This document | docs/ |
-| Audit Reports | Results | audit_results/ |
+| Document               | Purpose        | Location       |
+| ---------------------- | -------------- | -------------- |
+| DEPENDENCY_ANALYSIS.md | Full inventory | docs/          |
+| DEPENDENCY_UPDATES.md  | Update plan    | docs/          |
+| Supply Chain Policy    | This document  | docs/          |
+| Audit Reports          | Results        | audit_results/ |
 
 ---
 
 ## 12. Roles & Responsibilities
 
 ### 12.1 Security Team
+
 - Weekly vulnerability scanning
 - Vulnerability assessment
 - Patch prioritization
 - Incident response
 
 ### 12.2 Development Team
+
 - Dependency evaluation
 - Code updates during patches
 - Testing after updates
 - Performance validation
 
 ### 12.3 Tech Lead
+
 - Update approval
 - Timeline management
 - Risk assessment
 - Release coordination
 
 ### 12.4 CTO
+
 - Policy enforcement
 - Escalation decisions
 - External communication
@@ -350,6 +375,7 @@ For each dependency:
 ### 13.1 Team Training
 
 All team members must understand:
+
 - Dependency security risks
 - Vulnerability assessment process
 - Update procedures
@@ -365,12 +391,12 @@ All team members must understand:
 
 ## 14. Policy Review
 
-| Review | Frequency | Owner |
-|--------|-----------|-------|
-| Policy review | Annually | CTO |
-| Vulnerability assessment | Monthly | Security Team |
-| Metrics review | Quarterly | Tech Lead |
-| Incident review | As-needed | Security Team |
+| Review                   | Frequency | Owner         |
+| ------------------------ | --------- | ------------- |
+| Policy review            | Annually  | CTO           |
+| Vulnerability assessment | Monthly   | Security Team |
+| Metrics review           | Quarterly | Tech Lead     |
+| Incident review          | As-needed | Security Team |
 
 ---
 
@@ -379,6 +405,7 @@ All team members must understand:
 ### 15.1 Exception Process
 
 To request exception:
+
 1. Submit justification to CTO
 2. Security team assessment
 3. Risk documentation
@@ -404,34 +431,40 @@ This policy is effective January 3, 2026.
 ## Appendix A: Quick Reference
 
 ### Check for vulnerabilities
+
 ```bash
 cargo audit
 pip-audit
 ```
 
 ### Check for updates
+
 ```bash
 cargo outdated
 pip list --outdated
 ```
 
 ### Run full audit
+
 ```bash
 bash scripts/audits/p0-003-dependency-audit.sh
 ```
 
 ### Generate report
+
 ```bash
 python scripts/audits/generate_audit_report.py
 ```
 
 ### Update dependencies
+
 ```bash
 cargo update
 pip install --upgrade -r requirements.txt
 ```
 
 ### Verify integrity
+
 ```bash
 cargo verify-project
 pip hash --algorithm sha256 <package>
@@ -439,4 +472,4 @@ pip hash --algorithm sha256 <package>
 
 ---
 
-*This policy ensures PhantomMesh-VPN maintains a secure and auditable supply chain.*
+_This policy ensures PhantomMesh-VPN maintains a secure and auditable supply chain._
