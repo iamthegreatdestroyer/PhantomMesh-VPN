@@ -1,0 +1,189 @@
+version: "3.9"
+
+services:
+  # Primary VPN Node
+  phantom-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    container_name: phantom-primary
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - ./configs:/etc/phantom-mesh:ro
+      - phantom-state:/var/lib/phantom-mesh
+      - phantom-logs:/var/log/phantom-mesh
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      - phantom-mesh-net
+    ports:
+      - "24510:51820/udp" # WireGuard VPN
+      - "24511:8080" # API Gateway
+    environment:
+      - RUST_LOG=info,phantom_mesh=debug
+      - PHANTOM_MODE=primary
+      - AGENT_SWARM_ENABLED=true
+    restart: unless-stopped
+
+  # Agent Swarm Orchestrator
+  agent-swarm:
+    build:
+      context: .
+      dockerfile: Dockerfile.agents
+    container_name: phantom-agents
+    volumes:
+      - ./src/agent_swarm:/app/agents:ro
+      - agent-state:/var/lib/phantom-agents
+    networks:
+      - phantom-mesh-net
+    ports:
+      - "24520:8000" # Agent Swarm Metrics
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PHANTOM_ORCHESTRATOR_MODE=autonomous
+      - MNEMONIC_CACHE_SIZE=10000
+      - SIGMA_VAULT_ENDPOINT=http://phantom-node:8080/sigma
+      - SKIP_SIGMA_VAULT=true
+    command: ["python", "-m", "agents.phantom_orchestrator"]
+    depends_on:
+      - discovery
+    restart: unless-stopped
+
+  # Agent Discovery Service
+  discovery:
+    build:
+      context: .
+      dockerfile: Dockerfile.discovery
+    container_name: phantom-discovery
+    volumes:
+      - ./src/agent_swarm:/app/agents:ro
+      - discovery-state:/var/lib/phantom-discovery
+      - ./configs:/etc/prometheus:ro
+      - phantom-logs:/tmp/phantom-logs
+    networks:
+      - phantom-mesh-net
+    ports:
+      - "24530:8081" # Discovery API
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DISCOVERY_MODE=service
+    command: ["python", "-m", "agents.discovery"]
+    restart: unless-stopped
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: phantom-metrics
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - phantom-mesh-net
+    ports:
+      - "24540:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: phantom-dashboard
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./configs/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    networks:
+      - phantom-mesh-net
+    ports:
+      - "24541:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=phantom_secure_2025
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+      - loki
+
+  # Log Aggregation with Loki
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: phantom-loki
+    volumes:
+      - loki-data:/loki
+    networks:
+      - phantom-mesh-net
+    ports:
+      - "24550:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: phantom-promtail
+    volumes:
+      - ./configs/promtail.yml:/etc/promtail/promtail.yml:ro
+      - phantom-logs:/tmp/phantom-logs:ro
+      - agent-state:/var/lib/phantom-agents:ro
+      - /var/log:/var/log:ro
+    networks:
+      - phantom-mesh-net
+    command: -config.file=/etc/promtail/promtail.yml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  # Node Exporters for system metrics
+  node-exporter-phantom:
+    image: prom/node-exporter:v1.7.0
+    container_name: phantom-node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.rootfs=/rootfs"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - phantom-mesh-net
+    ports:
+      - "24560:9100"
+    restart: unless-stopped
+
+  node-exporter-agents:
+    image: prom/node-exporter:v1.7.0
+    container_name: phantom-agent-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.rootfs=/rootfs"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - phantom-mesh-net
+    ports:
+      - "24561:9100"
+    restart: unless-stopped
+
+networks:
+  phantom-mesh-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  phantom-state:
+  agent-state:
+  discovery-state:
+  phantom-logs:
+  prometheus-data:
+  grafana-data:
+  loki-data:
