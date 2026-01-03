@@ -1,0 +1,126 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Rust Binary (phantom-node)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin", "phantom-node", "--package", "phantom-mesh"],
+        "filter": {
+          "name": "phantom-node",
+          "kind": "bin"
+        }
+      },
+      "args": ["--config", "${workspaceFolder}/configs/mesh_configs.yaml"],
+      "cwd": "${workspaceFolder}",
+      "sourceLanguages": ["rust"],
+      "sourceMap": false,
+      "env": {
+        "RUST_BACKTRACE": "full",
+        "RUST_LOG": "debug"
+      },
+      "preLaunchTask": "rust: cargo check"
+    },
+    {
+      "name": "Debug Rust Tests",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["test", "--lib", "--no-run"],
+        "filter": {
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "sourceLanguages": ["rust"],
+      "env": {
+        "RUST_BACKTRACE": "full",
+        "RUST_LOG": "debug"
+      }
+    },
+    {
+      "name": "Debug Python Orchestrator",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "agent_swarm.phantom_orchestrator",
+      "cwd": "${workspaceFolder}/src",
+      "justMyCode": false,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "RUST_LOG": "debug"
+      },
+      "console": "integratedTerminal",
+      "presentation": {
+        "hidden": false,
+        "group": "group_python",
+        "order": 1
+      }
+    },
+    {
+      "name": "Debug Python Unit Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/python/unit", "-v", "-s"],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "console": "integratedTerminal",
+      "presentation": {
+        "hidden": false,
+        "group": "group_python",
+        "order": 2
+      }
+    },
+    {
+      "name": "Debug Python Integration Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/python/integration", "-v", "-s"],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "console": "integratedTerminal",
+      "presentation": {
+        "hidden": false,
+        "group": "group_python",
+        "order": 3
+      }
+    },
+    {
+      "name": "Attach to Kubernetes Pod",
+      "type": "python",
+      "request": "attach",
+      "host": "localhost",
+      "port": 5678,
+      "pathMapping": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/workspace"
+        }
+      ],
+      "justMyCode": false,
+      "presentation": {
+        "hidden": false,
+        "group": "group_k8s",
+        "order": 1
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full Stack Debug",
+      "configurations": [
+        "Debug Rust Binary (phantom-node)",
+        "Debug Python Orchestrator"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "hidden": false,
+        "group": "debug",
+        "order": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,358 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "rust: cargo build",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["build"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$rustc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo check",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["check", "--all-targets"],
+      "group": "build",
+      "problemMatcher": ["$rustc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo build --release",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["build", "--release"],
+      "group": "build",
+      "problemMatcher": ["$rustc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo test",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["test", "--lib"],
+      "group": "test",
+      "problemMatcher": ["$rustc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo test --all",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["test", "--all-features"],
+      "group": "test",
+      "problemMatcher": ["$rustc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo clippy",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "clippy",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "group": "build",
+      "problemMatcher": ["$rustc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo fmt --check",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["fmt", "--", "--check"],
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo fmt",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["fmt"],
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo doc",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["doc", "--no-deps", "--open"],
+      "group": "build",
+      "problemMatcher": ["$rustc"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rust: cargo audit",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["audit"],
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "python: pytest all",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "pytest", "tests/python", "-v"],
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "python: pytest unit",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "pytest", "tests/python/unit", "-v"],
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "python: pytest integration",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-m",
+        "pytest",
+        "tests/python/integration",
+        "-v",
+        "-m",
+        "integration"
+      ],
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "python: black format",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "black", "src/", "tests/"],
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "python: black check",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "black", "--check", "src/", "tests/"],
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "python: pylint",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "pylint", "src/"],
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "python: mypy",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "mypy", "src/"],
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "docker: build",
+      "type": "shell",
+      "command": "docker-compose",
+      "args": ["build"],
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "docker: up",
+      "type": "shell",
+      "command": "docker-compose",
+      "args": ["up", "-d"],
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "docker: down",
+      "type": "shell",
+      "command": "docker-compose",
+      "args": ["down"],
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "k8s: apply manifests",
+      "type": "shell",
+      "command": "kubectl",
+      "args": ["apply", "-f", "k8s/base/"],
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "k8s: delete manifests",
+      "type": "shell",
+      "command": "kubectl",
+      "args": ["delete", "-f", "k8s/base/"],
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "label": "helm: lint",
+      "type": "shell",
+      "command": "helm",
+      "args": ["lint", "k8s/helm/phantommesh/"],
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

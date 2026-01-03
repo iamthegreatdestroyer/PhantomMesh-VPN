@@ -1,0 +1,16 @@
+# Test configuration fixtures
+
+test_node:
+  id: "test-node-001"
+  tier: "relay"
+  capabilities: ["route", "cache"]
+
+test_peer:
+  public_key: "dGVzdF9wdWJsaWNfa2V5X2Jhc2U2NA=="
+  endpoint: "127.0.0.1:51820"
+  allowed_ips: ["10.0.0.0/24"]
+
+test_mesh:
+  network_id: "test-mesh"
+  subnet: "10.100.0.0/16"
+  max_peers: 10

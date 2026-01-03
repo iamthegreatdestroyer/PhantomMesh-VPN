@@ -1,0 +1,18 @@
+{
+  "signatures": [
+    {
+      "id": "test_sig_001",
+      "pattern": "90909090",
+      "description": "Test NOP sled signature",
+      "severity": "high",
+      "category": "malware"
+    },
+    {
+      "id": "test_sig_002",
+      "pattern": "414141414141",
+      "description": "Test buffer overflow pattern",
+      "severity": "critical",
+      "category": "exploit"
+    }
+  ]
+}
