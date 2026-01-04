@@ -1,0 +1,155 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: phantom-mesh-ingress
+  namespace: phantom-mesh
+  labels:
+    app: phantom-mesh
+    component: ingress
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "phantom-auth-secret"
+    nginx.ingress.kubernetes.io/auth-realm: "PhantomMesh Authentication"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - phantom-vpn.example.com
+        - monitoring.phantom-vpn.example.com
+        - api.phantom-vpn.example.com
+      secretName: phantom-mesh-tls
+  rules:
+    # Primary VPN Dashboard
+    - host: phantom-vpn.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-automation
+                port:
+                  number: 8080
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-vpn-core
+                port:
+                  number: 5000
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: phantom-automation
+                port:
+                  number: 8080
+    # Monitoring Stack
+    - host: monitoring.phantom-vpn.example.com
+      http:
+        paths:
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-grafana
+                port:
+                  number: 3000
+          - path: /prometheus
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-prometheus
+                port:
+                  number: 9090
+          - path: /alertmanager
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-alertmanager
+                port:
+                  number: 9093
+    # API Gateway
+    - host: api.phantom-vpn.example.com
+      http:
+        paths:
+          - path: /v1/vpn
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-vpn-core
+                port:
+                  number: 5000
+          - path: /v1/discovery
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-discovery
+                port:
+                  number: 9090
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: phantom-prometheus
+                port:
+                  number: 9090
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: phantom-mesh-cert
+  namespace: phantom-mesh
+spec:
+  secretName: phantom-mesh-tls
+  duration: 2160h # 90 days
+  renewBefore: 720h # 30 days
+  commonName: phantom-vpn.example.com
+  dnsNames:
+    - phantom-vpn.example.com
+    - monitoring.phantom-vpn.example.com
+    - api.phantom-vpn.example.com
+    - "*.phantom-vpn.example.com"
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  namespace: phantom-mesh
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@phantom-vpn.example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+      - dns01:
+          cloudflare:
+            email: admin@phantom-vpn.example.com
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: phantom-auth-secret
+  namespace: phantom-mesh
+type: Opaque
+stringData:
+  auth: |
+    # Generated with: htpasswd -c auth phantom-admin
+    # Update credentials as needed
+    phantom-admin:$apr1$r31....

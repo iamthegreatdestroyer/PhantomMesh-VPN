@@ -1,0 +1,222 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-automation
+  namespace: phantom-mesh
+  labels:
+    app: phantom-automation
+    component: automation
+  annotations:
+    description: "Automation layer service"
+spec:
+  type: ClusterIP
+  selector:
+    app: phantom-automation
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+  sessionAffinity: None
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-automation-headless
+  namespace: phantom-mesh
+  labels:
+    app: phantom-automation
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: phantom-automation
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-vpn-core
+  namespace: phantom-mesh
+  labels:
+    app: phantom-vpn-core
+    component: vpn-core
+  annotations:
+    description: "VPN core service"
+spec:
+  type: ClusterIP
+  selector:
+    app: phantom-vpn-core
+  ports:
+    - name: wg
+      port: 51820
+      targetPort: 51820
+      protocol: UDP
+    - name: api
+      port: 5000
+      targetPort: 5000
+      protocol: TCP
+    - name: metrics
+      port: 9091
+      targetPort: 9091
+      protocol: TCP
+  sessionAffinity: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-vpn-core-headless
+  namespace: phantom-mesh
+  labels:
+    app: phantom-vpn-core
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: phantom-vpn-core
+  ports:
+    - name: wg
+      port: 51820
+      targetPort: 51820
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-discovery
+  namespace: phantom-mesh
+  labels:
+    app: phantom-discovery
+    component: discovery
+  annotations:
+    description: "Discovery service"
+spec:
+  type: ClusterIP
+  selector:
+    app: phantom-discovery
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+    - name: metrics
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+  sessionAffinity: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-prometheus
+  namespace: phantom-mesh
+  labels:
+    app: prometheus
+    component: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - name: web
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-prometheus-headless
+  namespace: phantom-mesh
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: prometheus
+  ports:
+    - name: web
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-grafana
+  namespace: phantom-mesh
+  labels:
+    app: grafana
+    component: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+    - name: web
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-alertmanager
+  namespace: phantom-mesh
+  labels:
+    app: alertmanager
+    component: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: alertmanager
+  ports:
+    - name: web
+      port: 9093
+      targetPort: 9093
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-postgres
+  namespace: phantom-mesh
+  labels:
+    app: postgres
+    component: database
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phantom-redis
+  namespace: phantom-mesh
+  labels:
+    app: redis
+    component: cache
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP

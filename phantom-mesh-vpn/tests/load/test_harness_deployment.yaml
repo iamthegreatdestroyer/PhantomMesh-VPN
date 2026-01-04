@@ -1,0 +1,165 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phantom-load-test
+  labels:
+    app: phantom-mesh
+    environment: load-test
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: load-test-config
+  namespace: phantom-load-test
+data:
+  load_test_config.json: |
+    {
+      "target_url": "http://vpn-core-service.phantom-mesh.svc.cluster.local:8080",
+      "test_duration_seconds": 300,
+      "ramp_up_seconds": 60,
+      "cooldown_seconds": 30,
+      "initial_rate": 100,
+      "peak_rate": 1000,
+      "spike_rate": 2000,
+      "spike_duration": 60,
+      "concurrent_users": 50,
+      "expected_p50_latency_ms": 50,
+      "expected_p99_latency_ms": 200,
+      "expected_error_rate": 0.01
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-test-runner
+  namespace: phantom-load-test
+  labels:
+    app: load-test-runner
+    tier: testing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-test-runner
+  template:
+    metadata:
+      labels:
+        app: load-test-runner
+        tier: testing
+    spec:
+      serviceAccountName: load-test-sa
+      containers:
+        - name: load-tester
+          image: phantom-mesh:load-test
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TARGET_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: load-test-config
+                  key: target_url
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: METRICS_OUTPUT
+              value: "/metrics/results.json"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/load-test
+            - name: metrics
+              mountPath: /metrics
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -f /tmp/load-test-running
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: load-test-config
+        - name: metrics
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: load-test-scripts
+            defaultMode: 0755
+      restartPolicy: Never
+      backoffLimit: 0
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: load-test-sa
+  namespace: phantom-load-test
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: load-test-role
+  namespace: phantom-load-test
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/logs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: load-test-rolebinding
+  namespace: phantom-load-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: load-test-role
+subjects:
+  - kind: ServiceAccount
+    name: load-test-sa
+    namespace: phantom-load-test
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: load-test-runner
+  namespace: phantom-load-test
+  labels:
+    app: load-test-runner
+spec:
+  selector:
+    app: load-test-runner
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+  type: ClusterIP
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: load-test-pdb
+  namespace: phantom-load-test
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: load-test-runner

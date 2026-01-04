@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: load-test-scripts
+  namespace: phantom-load-test
+data:
+  run_load_test.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    echo "=========================================="
+    echo "PhantomMesh Load Test Runner"
+    echo "=========================================="
+    echo "Start Time: $(date -Iseconds)"
+
+    # Create marker file to indicate test is running
+    touch /tmp/load-test-running
+
+    # Export metrics location
+    export METRICS_OUTPUT="${METRICS_OUTPUT:-/metrics/results.json}"
+
+    # Run the Python load test runner
+    cd /app && python3 tests/load/load_test_runner.py \
+      --config /etc/load-test/load_test_config.json \
+      --output "${METRICS_OUTPUT}" \
+      --log-level INFO
+
+    # Capture exit code
+    EXIT_CODE=$?
+
+    echo "=========================================="
+    echo "Load Test Completed"
+    echo "End Time: $(date -Iseconds)"
+    echo "Exit Code: ${EXIT_CODE}"
+    echo "=========================================="
+
+    # Keep pod alive for log collection
+    if [ ${EXIT_CODE} -eq 0 ]; then
+      sleep 30
+    else
+      sleep 10
+    fi
+
+    exit ${EXIT_CODE}
+
+  collect_metrics.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    METRICS_OUTPUT="${METRICS_OUTPUT:-/metrics/results.json}"
+    PROMETHEUS_URL="${PROMETHEUS_URL:-http://prometheus:9090}"
+
+    echo "Collecting baseline metrics..."
+
+    # Wait for test to complete
+    while [ ! -f "${METRICS_OUTPUT}" ]; do
+      echo "Waiting for test results..."
+      sleep 5
+    done
+
+    # Query Prometheus for system metrics
+    QUERY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    curl -s "${PROMETHEUS_URL}/api/v1/query" \
+      --data-urlencode "query=rate(http_request_duration_seconds_sum[5m])" \
+      --data-urlencode "time=${QUERY_TIME}" \
+      > /metrics/prometheus_latency.json || true
+
+    curl -s "${PROMETHEUS_URL}/api/v1/query" \
+      --data-urlencode "query=rate(http_requests_total[5m])" \
+      --data-urlencode "time=${QUERY_TIME}" \
+      > /metrics/prometheus_throughput.json || true
+
+    echo "Baseline metrics collected at ${QUERY_TIME}"
+
+  validate_latency.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    METRICS_OUTPUT="${METRICS_OUTPUT:-/metrics/results.json}"
+
+    echo "=========================================="
+    echo "Latency Target Validation"
+    echo "=========================================="
+
+    if [ ! -f "${METRICS_OUTPUT}" ]; then
+      echo "ERROR: Metrics file not found: ${METRICS_OUTPUT}"
+      exit 1
+    fi
+
+    # Extract latency percentiles from results
+    P50=$(jq '.metrics.latency_percentiles.p50' "${METRICS_OUTPUT}" 2>/dev/null || echo "0")
+    P99=$(jq '.metrics.latency_percentiles.p99' "${METRICS_OUTPUT}" 2>/dev/null || echo "0")
+    P999=$(jq '.metrics.latency_percentiles.p999' "${METRICS_OUTPUT}" 2>/dev/null || echo "0")
+    MEAN=$(jq '.metrics.latency_mean' "${METRICS_OUTPUT}" 2>/dev/null || echo "0")
+
+    # Expected targets (in milliseconds)
+    P50_TARGET=50
+    P99_TARGET=200
+    P999_TARGET=500
+    MEAN_TARGET=100
+
+    echo "Actual Latencies:"
+    echo "  Mean:  ${MEAN} ms (target: <= ${MEAN_TARGET} ms)"
+    echo "  P50:   ${P50} ms (target: <= ${P50_TARGET} ms)"
+    echo "  P99:   ${P99} ms (target: <= ${P99_TARGET} ms)"
+    echo "  P999:  ${P999} ms (target: <= ${P999_TARGET} ms)"
+
+    # Validation logic
+    PASS=true
+
+    if (( $(echo "${MEAN} > ${MEAN_TARGET}" | bc -l) )); then
+      echo "❌ FAIL: Mean latency ${MEAN} ms exceeds target ${MEAN_TARGET} ms"
+      PASS=false
+    else
+      echo "✅ PASS: Mean latency within target"
+    fi
+
+    if (( $(echo "${P50} > ${P50_TARGET}" | bc -l) )); then
+      echo "❌ FAIL: P50 latency ${P50} ms exceeds target ${P50_TARGET} ms"
+      PASS=false
+    else
+      echo "✅ PASS: P50 latency within target"
+    fi
+
+    if (( $(echo "${P99} > ${P99_TARGET}" | bc -l) )); then
+      echo "❌ FAIL: P99 latency ${P99} ms exceeds target ${P99_TARGET} ms"
+      PASS=false
+    else
+      echo "✅ PASS: P99 latency within target"
+    fi
+
+    if (( $(echo "${P999} > ${P999_TARGET}" | bc -l) )); then
+      echo "⚠️  WARNING: P999 latency ${P999} ms exceeds target ${P999_TARGET} ms"
+    else
+      echo "✅ PASS: P999 latency within target"
+    fi
+
+    echo "=========================================="
+    if [ "${PASS}" = true ]; then
+      echo "Result: ✅ ALL CRITICAL LATENCY TARGETS MET"
+      exit 0
+    else
+      echo "Result: ❌ LATENCY VALIDATION FAILED"
+      exit 1
+    fi

@@ -1,0 +1,232 @@
+---
+# ClusterRole for phantom-automation service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: phantom-automation-role
+  namespace: phantom-mesh
+  labels:
+    app: phantom-mesh
+    component: automation
+rules:
+  # Pod management
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+
+  # ConfigMap and Secret access
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+
+  # Service discovery
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+
+  # Deployment management
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+
+  # Metrics
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+
+  # Namespace info
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+---
+# ClusterRoleBinding for phantom-automation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: phantom-automation-rolebinding
+  namespace: phantom-mesh
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: phantom-automation-role
+subjects:
+  - kind: ServiceAccount
+    name: phantom-automation
+    namespace: phantom-mesh
+---
+# ClusterRole for phantom-vpn-core service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: phantom-vpn-core-role
+  namespace: phantom-mesh
+rules:
+  # Pod management
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  # ConfigMap access for network config
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+
+  # Service discovery
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+
+  # Metrics
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+# ClusterRoleBinding for phantom-vpn-core
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: phantom-vpn-core-rolebinding
+  namespace: phantom-mesh
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: phantom-vpn-core-role
+subjects:
+  - kind: ServiceAccount
+    name: phantom-vpn-core
+    namespace: phantom-mesh
+---
+# ClusterRole for monitoring components
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: phantom-monitoring-role
+  namespace: phantom-mesh
+rules:
+  # Node metrics
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy"]
+    verbs: ["get", "list", "watch"]
+
+  # Pod metrics
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  # Service discovery
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+
+  # ConfigMap access for scrape configs
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+
+  # Persistent volume info
+  - apiGroups: [""]
+    resources: ["persistentvolumes", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+
+  # Namespace info
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+
+  # Metrics API
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+# ClusterRoleBinding for phantom-monitoring
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: phantom-monitoring-rolebinding
+  namespace: phantom-mesh
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: phantom-monitoring-role
+subjects:
+  - kind: ServiceAccount
+    name: phantom-monitoring
+    namespace: phantom-mesh
+---
+# Role for namespace-scoped operations (phantom-automation)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: phantom-automation-namespace-role
+  namespace: phantom-mesh
+rules:
+  # Event creation for audit trail
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+  # Pod disruption budgets
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+
+  # Network policies
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+---
+# RoleBinding for phantom-automation namespace role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: phantom-automation-namespace-rolebinding
+  namespace: phantom-mesh
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: phantom-automation-namespace-role
+subjects:
+  - kind: ServiceAccount
+    name: phantom-automation
+    namespace: phantom-mesh
+---
+# Role for monitoring namespace-scoped operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: phantom-monitoring-namespace-role
+  namespace: phantom-mesh
+rules:
+  # ConfigMap for Prometheus config
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+
+  # Persistent volumes for storage
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+---
+# RoleBinding for monitoring namespace role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: phantom-monitoring-namespace-rolebinding
+  namespace: phantom-mesh
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: phantom-monitoring-namespace-role
+subjects:
+  - kind: ServiceAccount
+    name: phantom-monitoring
+    namespace: phantom-mesh

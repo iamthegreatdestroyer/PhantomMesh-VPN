@@ -1,0 +1,28 @@
+{
+  "test_name": "ramp-up",
+  "duration": 300,
+  "request_count": 272550,
+  "success_count": 271183,
+  "error_count": 1367,
+  "metrics": {
+    "latency_mean": 32.51,
+    "latency_min": 5,
+    "latency_max": 269.86,
+    "latency_percentiles": {
+      "p50": 31.51,
+      "p95": 45.1,
+      "p99": 65.16,
+      "p999": 184.65
+    },
+    "peak_rps": 1050.0,
+    "avg_rps": 908.0
+  },
+  "optimized": true,
+  "timestamp": "2026-01-04T11:11:11.043037",
+  "optimizations": {
+    "connection_pooling": true,
+    "request_batching": true,
+    "adaptive_throttling": true,
+    "spike_reduction": true
+  }
+}

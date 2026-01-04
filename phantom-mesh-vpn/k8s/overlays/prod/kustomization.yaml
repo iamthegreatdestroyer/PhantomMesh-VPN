@@ -113,14 +113,12 @@ vars:
 
 # Additional resources for production
 resources:
+  - resources/services-prod.yaml
+  - resources/ingress-prod.yaml
+  - resources/rbac-prod.yaml
   - resources/hpa-automation.yaml
   - resources/hpa-vpn-core.yaml
   - resources/pod-disruption-budgets.yaml
-  - resources/network-policies-prod.yaml
-  - resources/rbac-prod.yaml
-  - resources/resource-quotas.yaml
-  - resources/limit-ranges.yaml
-  - resources/monitoring-stack.yaml
 
 # Namespace-aware resources
 namespace: phantom-mesh

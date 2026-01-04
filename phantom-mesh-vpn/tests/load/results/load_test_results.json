@@ -1,0 +1,23 @@
+{
+  "test_name": "ramp-up",
+  "duration": 300,
+  "request_count": 272550,
+  "success_count": 269731,
+  "error_count": 2819,
+  "metrics": {
+    "latency_mean": 51.21,
+    "latency_min": 5,
+    "latency_max": 338.9,
+    "latency_percentiles": {
+      "p50": 44.64,
+      "p95": 102.19,
+      "p99": 238.42,
+      "p999": 280.88
+    },
+    "peak_rps": 1050.0,
+    "avg_rps": 908.0
+  },
+  "timestamp": "2026-01-04T10:55:35.300794",
+  "simulation": true,
+  "note": "This is a simulated test result for demonstration purposes"
+}
