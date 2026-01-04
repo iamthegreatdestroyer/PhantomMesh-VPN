@@ -1,0 +1,255 @@
+groups:
+  - name: phantom_mesh_alerts
+    interval: 30s
+    rules:
+      # Threat Assessment Alerts
+      - alert: ThreatAssessmentHighLatency
+        expr: histogram_quantile(0.95, threat_assessment_latency_ms) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: threat_assessment
+        annotations:
+          summary: "Threat assessment latency high"
+          description: "Threat assessment p95 latency is {{ $value }}ms (threshold: 100ms)"
+
+      - alert: ThreatAssessmentErrors
+        expr: rate(threat_assessment_errors_total[5m]) > 0.01
+        for: 10m
+        labels:
+          severity: critical
+          component: threat_assessment
+        annotations:
+          summary: "High threat assessment error rate"
+          description: "Error rate: {{ $value | humanizePercentage }}"
+
+      # Alert Routing Alerts
+      - alert: AlertRoutingHighLatency
+        expr: histogram_quantile(0.95, alert_routing_latency_ms) > 200
+        for: 5m
+        labels:
+          severity: warning
+          component: alert_routing
+        annotations:
+          summary: "Alert routing latency high"
+          description: "Alert routing p95 latency is {{ $value }}ms (threshold: 200ms)"
+
+      - alert: AlertRoutingBacklog
+        expr: alert_queue_depth > 10000
+        for: 5m
+        labels:
+          severity: critical
+          component: alert_routing
+        annotations:
+          summary: "Large alert routing backlog"
+          description: "Alert queue depth: {{ $value }}"
+
+      # Auto-Remediation Alerts
+      - alert: RemediationHighLatency
+        expr: histogram_quantile(0.95, remediation_latency_ms) > 500
+        for: 5m
+        labels:
+          severity: warning
+          component: auto_remediation
+        annotations:
+          summary: "Remediation latency high"
+          description: "Remediation p95 latency is {{ $value }}ms (threshold: 500ms)"
+
+      - alert: RemediationActionFailure
+        expr: rate(remediation_action_failures_total[5m]) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          component: auto_remediation
+        annotations:
+          summary: "High remediation action failure rate"
+          description: "Failure rate: {{ $value | humanizePercentage }}"
+
+      # Incident Response Alerts
+      - alert: IncidentResponseHighLatency
+        expr: histogram_quantile(0.95, incident_response_latency_ms) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: incident_response
+        annotations:
+          summary: "Incident response latency high"
+          description: "Incident response p95 latency is {{ $value }}ms (threshold: 1000ms)"
+
+      - alert: IncidentBacklog
+        expr: incident_queue_depth > 1000
+        for: 5m
+        labels:
+          severity: critical
+          component: incident_response
+        annotations:
+          summary: "Large incident response backlog"
+          description: "Incident queue depth: {{ $value }}"
+
+      # ML Training Alerts
+      - alert: MLModelAccuracyDegraded
+        expr: ml_model_accuracy < 0.80
+        for: 30m
+        labels:
+          severity: warning
+          component: ml_training
+        annotations:
+          summary: "ML model accuracy degraded"
+          description: "Current accuracy: {{ $value | humanizePercentage }} (threshold: 80%)"
+
+      - alert: MLTrainingFailed
+        expr: increase(ml_training_failures_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: ml_training
+        annotations:
+          summary: "ML training job failed"
+          description: "Recent ML training failures detected"
+
+      # System-wide Alerts
+      - alert: HighErrorRate
+        expr: rate(total_errors_total[5m]) > 0.001
+        for: 10m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "High system error rate"
+          description: "Error rate: {{ $value | humanizePercentage }} (threshold: 0.1%)"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, request_latency_ms) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High system latency"
+          description: "p99 latency: {{ $value }}ms (threshold: 1000ms)"
+
+      - alert: LowThroughput
+        expr: rate(requests_total[5m]) < 100
+        for: 15m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Low system throughput"
+          description: "Throughput: {{ $value }} req/s (threshold: 100 req/s)"
+
+      # Availability Alerts
+      - alert: PodRestartingTooOften
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: kubernetes
+        annotations:
+          summary: "Pod restarting too often"
+          description: "Restart rate: {{ $value }} (namespace: {{ $labels.namespace }}, pod: {{ $labels.pod }})"
+
+      - alert: PodNotRunning
+        expr: kube_pod_status_phase{namespace="phantom-mesh", phase!="Running"} > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: kubernetes
+        annotations:
+          summary: "Pod not running"
+          description: "Pod {{ $labels.pod }} is in {{ $labels.phase }} state"
+
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          component: kubernetes
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage: {{ $value | humanizePercentage }} (pod: {{ $labels.pod }})"
+
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: kubernetes
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage: {{ $value | humanize }}% (pod: {{ $labels.pod }})"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 15m
+        labels:
+          severity: critical
+          component: kubernetes
+        annotations:
+          summary: "Disk space low"
+          description: "Available disk space: {{ $value | humanizePercentage }} (node: {{ $labels.node }})"
+
+      # Database Alerts
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "PostgreSQL is unavailable"
+
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL connection pool usage high"
+          description: "Connection usage: {{ $value | humanizePercentage }}"
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis cache is down"
+          description: "Redis is unavailable"
+
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Memory usage: {{ $value | humanizePercentage }}"
+
+      # SLO Alerts
+      - alert: AvailabilityBudgetBurning
+        expr: |
+          (1 - (requests_without_errors_total / requests_total)) 
+          > 0.001
+        for: 1h
+        labels:
+          severity: warning
+          slo: availability
+        annotations:
+          summary: "Availability SLO budget burning"
+          description: "Error rate: {{ $value | humanizePercentage }} (SLO: < 0.1%)"
+
+      - alert: LatencySLOViolation
+        expr: histogram_quantile(0.95, request_latency_ms) > 200
+        for: 30m
+        labels:
+          severity: warning
+          slo: latency
+        annotations:
+          summary: "Latency SLO violation"
+          description: "p95 latency: {{ $value }}ms (SLO: < 200ms)"

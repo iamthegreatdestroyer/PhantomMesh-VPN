@@ -1,0 +1,148 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: phantom-mesh
+
+commonLabels:
+  app: phantom-mesh
+  environment: production
+  managed-by: kustomize
+  version: p1-006
+
+commonAnnotations:
+  deployment.time: "2026-01-03"
+  team: "apex-platform"
+  version: "1.0.0"
+
+# Base resources
+bases:
+  - ../base
+
+# Resource patches for production
+patchesStrategicMerge:
+  - patches/deployments-prod.yaml
+  - patches/services-prod.yaml
+  - patches/config-prod.yaml
+
+# Kustomize patches (JSON 6902)
+patchesJson6902:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: phantom-automation
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: replace
+        path: /spec/strategy/type
+        value: RollingUpdate
+      - op: add
+        path: /spec/strategy/rollingUpdate
+        value:
+          maxSurge: 1
+          maxUnavailable: 0
+
+  - target:
+      group: apps
+      version: v1
+      kind: StatefulSet
+      name: phantom-prometheus
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+# ConfigMap generators
+configMapGenerator:
+  - name: phantom-prod-config
+    behavior: create
+    files:
+      - config/automation-prod.yaml
+      - config/security-prod.yaml
+      - config/database-prod.yaml
+      - config/cache-prod.yaml
+    options:
+      labels:
+        environment: production
+
+# Secret generators
+secretGenerator:
+  - name: phantom-prod-secrets
+    behavior: create
+    files:
+      - secrets/tls.crt
+      - secrets/tls.key
+      - secrets/api-keys.yaml
+    options:
+      labels:
+        environment: production
+
+# Images for production
+images:
+  - name: phantom-mesh-vpn
+    newTag: v1.0.0-prod
+  - name: phantom-mesh-agents
+    newTag: v1.0.0-prod
+  - name: prometheus
+    newTag: v2.40.0
+  - name: grafana
+    newTag: v9.3.0
+
+# Replicas for production
+replicas:
+  - name: phantom-automation
+    count: 3
+  - name: phantom-prometheus
+    count: 2
+  - name: phantom-grafana
+    count: 1
+  - name: phantom-vpn-core
+    count: 3
+
+# Resource constraints
+vars:
+  - name: AUTOMATION_REPLICAS
+    objref:
+      kind: Deployment
+      name: phantom-automation
+      apiVersion: apps/v1
+    fieldref:
+      fieldpath: spec.replicas
+
+# Additional resources for production
+resources:
+  - resources/hpa-automation.yaml
+  - resources/hpa-vpn-core.yaml
+  - resources/pod-disruption-budgets.yaml
+  - resources/network-policies-prod.yaml
+  - resources/rbac-prod.yaml
+  - resources/resource-quotas.yaml
+  - resources/limit-ranges.yaml
+  - resources/monitoring-stack.yaml
+
+# Namespace-aware resources
+namespace: phantom-mesh
+
+# Post-processing
+sortOptions:
+  order: fifo
+
+# Validation
+validation:
+  schemas:
+    - kind: Deployment
+      group: apps
+      version: v1
+    - kind: Service
+      group: ""
+      version: v1
+    - kind: Ingress
+      group: networking.k8s.io
+      version: v1
+
+# Metadata
+metadata:
+  name: phantom-mesh-prod
+  namespace: phantom-mesh

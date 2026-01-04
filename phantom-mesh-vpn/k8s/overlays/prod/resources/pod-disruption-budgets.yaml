@@ -1,0 +1,57 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: phantom-automation-pdb
+  namespace: phantom-mesh
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: phantom-automation
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: phantom-vpn-core-pdb
+  namespace: phantom-mesh
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: phantom-vpn-core
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: phantom-discovery-pdb
+  namespace: phantom-mesh
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: phantom-discovery
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: phantom-prometheus-pdb
+  namespace: phantom-mesh
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: prometheus
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: phantom-grafana-pdb
+  namespace: phantom-mesh
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: grafana
