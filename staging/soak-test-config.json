@@ -1,0 +1,24 @@
+{
+  "monitoring": {
+    "alert_channels": [
+      "log",
+      "file"
+    ],
+    "sample_interval_seconds": 60,
+    "metrics_endpoint": "http://localhost:25540/api/v1/query"
+  },
+  "sustained_rps": 500,
+  "test_name": "72_hour_soak_test",
+  "target_url": "http://localhost:25511",
+  "status": "prepared",
+  "thresholds": {
+    "max_p99_latency_ms": 200,
+    "max_pod_restarts": 0,
+    "max_memory_growth_percent": 5,
+    "max_error_rate": 0.001
+  },
+  "duration_hours": 72,
+  "end_time": null,
+  "duration_seconds": 259200,
+  "start_time": null
+}

@@ -1,0 +1,23 @@
+{
+  "validation_result": "PASSED",
+  "end_time": "2026-01-04T13:34:51.4477778-05:00",
+  "failed_requests": 0,
+  "p90_latency_ms": 9.18,
+  "p99_latency_ms": 13.84,
+  "successful_requests": 1000,
+  "target_url": "http://localhost:24511",
+  "concurrent_users": 1000,
+  "start_time": "2026-01-04T13:34:43.0718146-05:00",
+  "error_rate": 0.0,
+  "error_sample": null,
+  "p50_latency_ms": 7.32,
+  "total_requests": 1000,
+  "test_id": "load_test_20260104_133443",
+  "duration_seconds": 30,
+  "actual_duration_seconds": 8.3636353,
+  "max_latency_ms": 37.19,
+  "min_latency_ms": 6.0,
+  "avg_latency_ms": 7.73,
+  "requests_per_second": 119.57,
+  "success_rate": 1.0
+}

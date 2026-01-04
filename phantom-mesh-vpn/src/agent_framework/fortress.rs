@@ -10,16 +10,16 @@
 //! - Response recommendation generation
 
 use crate::agent_framework::{
-    traits::{Agent, AgentMetrics, AgentState},
-    message::{Message, AgentId, MessageType, Priority},
     coordinator::AgentCoordinator,
+    message::{AgentId, Message, MessageType, Priority},
+    traits::{Agent, AgentMetrics, AgentState},
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::time::Instant;
-use tracing::{info, debug, warn, error};
+use tracing::{debug, error, info, warn};
 
 /// Threat detection and security analysis agent
 pub struct FortressAgent {
@@ -112,7 +112,10 @@ impl FortressAgent {
             self.threat_patterns.insert(pattern.name.clone(), pattern);
         }
 
-        debug!("FORTRESS: Initialized {} threat patterns", self.threat_patterns.len());
+        debug!(
+            "FORTRESS: Initialized {} threat patterns",
+            self.threat_patterns.len()
+        );
     }
 
     /// Analyze data for threats
@@ -122,7 +125,7 @@ impl FortressAgent {
         // Analyze against each pattern
         for pattern_ref in self.threat_patterns.iter() {
             let pattern = pattern_ref.value();
-            
+
             // Simple pattern matching simulation
             if let Some(content) = data.get("content").and_then(|v| v.as_str()) {
                 if content.contains(&pattern.pattern.to_lowercase()) {
@@ -144,7 +147,7 @@ impl FortressAgent {
 
     /// Generate threat score (0-100)
     async fn calculate_threat_score(&self, alerts: &[ThreatAlert]) -> f32 {
-        let mut score = 0.0;
+        let mut score: f32 = 0.0;
 
         for alert in alerts {
             let severity_score = match alert.severity {
@@ -201,7 +204,8 @@ impl Agent for FortressAgent {
     }
 
     async fn process_message(&self, message: Message) -> Result<Option<Message>, String> {
-        self.message_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.message_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         debug!("FORTRESS: Processing message {}", message.id);
 
         *self.state.write().await = AgentState::Processing;
@@ -235,16 +239,22 @@ impl Agent for FortressAgent {
                         if !alerts.is_empty() {
                             let threat_score = self.calculate_threat_score(&alerts).await;
                             let response = self.generate_response(threat_score).await;
-                            
-                            info!("FORTRESS: Threat detected with score {}: {}", threat_score, response);
 
-                            Some(Message::new(
-                                self.id.clone(),
-                                vec![message.from.clone()],
-                                MessageType::Alert(format!("Threat detected: {}", response)),
-                                Priority::Critical,
-                            ).with_data("threat_score", json!(threat_score))
-                             .with_data("alerts_count", json!(alerts.len())))
+                            info!(
+                                "FORTRESS: Threat detected with score {}: {}",
+                                threat_score, response
+                            );
+
+                            Some(
+                                Message::new(
+                                    self.id.clone(),
+                                    vec![message.from.clone()],
+                                    MessageType::Alert(format!("Threat detected: {}", response)),
+                                    Priority::Critical,
+                                )
+                                .with_data("threat_score", json!(threat_score))
+                                .with_data("alerts_count", json!(alerts.len())),
+                            )
                         } else {
                             Some(Message::new(
                                 self.id.clone(),
@@ -256,13 +266,17 @@ impl Agent for FortressAgent {
                     }
                     Err(e) => {
                         error!("FORTRESS: Error analyzing threats: {}", e);
-                        self.error_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        self.error_count
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         None
                     }
                 }
             }
             _ => {
-                debug!("FORTRESS: Received message of type: {:?}", message.message_type);
+                debug!(
+                    "FORTRESS: Received message of type: {:?}",
+                    message.message_type
+                );
                 None
             }
         };
@@ -288,7 +302,9 @@ impl Agent for FortressAgent {
 
     async fn get_metrics(&self) -> AgentMetrics {
         let uptime_seconds = self.start_time.elapsed().as_secs();
-        let messages_processed = self.message_count.load(std::sync::atomic::Ordering::Relaxed);
+        let messages_processed = self
+            .message_count
+            .load(std::sync::atomic::Ordering::Relaxed);
         let messages_failed = self.error_count.load(std::sync::atomic::Ordering::Relaxed);
 
         AgentMetrics {
@@ -299,7 +315,7 @@ impl Agent for FortressAgent {
             last_health_check: chrono::Utc::now().to_rfc3339(),
             uptime_seconds,
             cpu_usage_percent: 3.2, // Placeholder
-            memory_usage_mb: 52.0, // Placeholder
+            memory_usage_mb: 52.0,  // Placeholder
             is_healthy: true,
         }
     }

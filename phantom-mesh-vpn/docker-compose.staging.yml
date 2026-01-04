@@ -1,0 +1,168 @@
+# Staging Docker Compose Configuration
+# Isolated staging environment for validation before production deployment
+
+version: "3.9"
+
+services:
+  # Staging VPN Node
+  staging-phantom-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    container_name: staging-phantom-primary
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - ./configs:/etc/phantom-mesh:ro
+      - staging-phantom-state:/var/lib/phantom-mesh
+      - staging-phantom-logs:/var/log/phantom-mesh
+    networks:
+      - staging-net
+    ports:
+      - "25510:51820/udp" # Staging WireGuard
+      - "25511:8080" # Staging API
+    environment:
+      - RUST_LOG=info,phantom_mesh=debug
+      - PHANTOM_MODE=staging
+      - AGENT_SWARM_ENABLED=true
+      - STAGING_MODE=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Staging Agent Swarm
+  staging-agent-swarm:
+    build:
+      context: .
+      dockerfile: Dockerfile.agents
+    container_name: staging-phantom-agents
+    volumes:
+      - ./src/agent_swarm:/app/agents:ro
+      - staging-agent-state:/var/lib/phantom-agents
+    networks:
+      - staging-net
+    ports:
+      - "25520:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PHANTOM_ORCHESTRATOR_MODE=staging
+      - MNEMONIC_CACHE_SIZE=10000
+      - SIGMA_VAULT_ENDPOINT=http://staging-phantom-node:8080/sigma
+      - SKIP_SIGMA_VAULT=true
+      - STAGING_MODE=true
+    command: ["python", "-m", "agents.phantom_orchestrator"]
+    depends_on:
+      - staging-discovery
+    restart: unless-stopped
+
+  # Staging Discovery Service
+  staging-discovery:
+    build:
+      context: .
+      dockerfile: Dockerfile.discovery
+    container_name: staging-phantom-discovery
+    volumes:
+      - ./src/agent_swarm:/app/agents:ro
+      - staging-discovery-state:/var/lib/phantom-discovery
+      - staging-phantom-logs:/tmp/phantom-logs
+    networks:
+      - staging-net
+    ports:
+      - "25530:8081"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DISCOVERY_MODE=staging
+      - STAGING_MODE=true
+    command: ["python", "-m", "agents.discovery"]
+    restart: unless-stopped
+
+  # Load Test Runner
+  load-tester:
+    image: python:3.11-slim
+    container_name: staging-load-tester
+    working_dir: /app
+    volumes:
+      - ./tests/load:/app
+      - staging-load-results:/app/results
+    networks:
+      - staging-net
+    environment:
+      - TARGET_URL=http://staging-phantom-node:8080
+      - PYTHONUNBUFFERED=1
+      - TEST_MODE=staging
+      - CONCURRENT_USERS=1000
+      - TEST_DURATION=3600
+    command: |
+      bash -c "
+        pip install requests aiohttp asyncio --quiet &&
+        python -u load_test_runner.py
+      "
+    depends_on:
+      - staging-phantom-node
+    restart: "no"
+
+  # Soak Test Runner (72-hour sustained load)
+  soak-tester:
+    image: python:3.11-slim
+    container_name: staging-soak-tester
+    working_dir: /app
+    volumes:
+      - ./tests/load:/app
+      - staging-soak-results:/app/results
+    networks:
+      - staging-net
+    environment:
+      - TARGET_URL=http://staging-phantom-node:8080
+      - PYTHONUNBUFFERED=1
+      - TEST_MODE=soak
+      - SUSTAINED_RPS=500
+      - SOAK_DURATION_HOURS=72
+    command: |
+      bash -c "
+        pip install requests aiohttp asyncio --quiet &&
+        echo 'Soak test ready - will run for 72 hours' &&
+        python -u simulate_load_test.py --mode=soak --duration=72h
+      "
+    depends_on:
+      - staging-phantom-node
+    profiles: ["soak"]
+    restart: "no"
+
+  # Staging Metrics Collection
+  staging-prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: staging-prometheus
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - staging-prometheus-data:/prometheus
+    networks:
+      - staging-net
+    ports:
+      - "25540:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    restart: unless-stopped
+
+networks:
+  staging-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+
+volumes:
+  staging-phantom-state:
+  staging-agent-state:
+  staging-discovery-state:
+  staging-phantom-logs:
+  staging-prometheus-data:
+  staging-load-results:
+  staging-soak-results:

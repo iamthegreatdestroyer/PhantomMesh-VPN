@@ -61,7 +61,7 @@ impl LoadTester {
     /// Run throughput test: max messages/second
     pub async fn test_throughput(&self) -> PerformanceMetrics {
         let start = Instant::now();
-        let (tx, mut rx) = mpsc::channel(self.config.concurrent_sends * 10);
+        let (tx, mut rx) = mpsc::channel::<(Instant, Vec<u8>)>(self.config.concurrent_sends * 10);
 
         let message_count = self.message_count.clone();
         let error_count = self.error_count.clone();
@@ -145,7 +145,7 @@ impl LoadTester {
     /// Run stress test: push framework to limits
     pub async fn test_stress(&self) -> PerformanceMetrics {
         let start = Instant::now();
-        let (tx, mut rx) = mpsc::channel(1000);
+        let (tx, mut rx) = mpsc::channel::<(Instant, Vec<u8>)>(1000);
 
         let message_count = self.message_count.clone();
         let error_count = self.error_count.clone();

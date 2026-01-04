@@ -1,0 +1,29 @@
+{
+  "validation_result": "PARTIAL",
+  "end_time": "2026-01-04T13:28:02.8495501-05:00",
+  "failed_requests": 50,
+  "p90_latency_ms": 4105.44,
+  "p99_latency_ms": 4113.56,
+  "successful_requests": 0,
+  "target_url": "http://localhost:24511",
+  "concurrent_users": 1000,
+  "start_time": "2026-01-04T13:24:34.0927641-05:00",
+  "error_rate": 1.0,
+  "error_sample": [
+    "No connection could be made because the target machine actively refused it. (localhost:24511)",
+    "No connection could be made because the target machine actively refused it. (localhost:24511)",
+    "No connection could be made because the target machine actively refused it. (localhost:24511)",
+    "No connection could be made because the target machine actively refused it. (localhost:24511)",
+    "No connection could be made because the target machine actively refused it. (localhost:24511)"
+  ],
+  "p50_latency_ms": 4093.32,
+  "total_requests": 50,
+  "test_id": "load_test_20260104_132434",
+  "duration_seconds": 30,
+  "actual_duration_seconds": 204.6720692,
+  "max_latency_ms": 4113.56,
+  "min_latency_ms": 4067.54,
+  "avg_latency_ms": 4091.93,
+  "requests_per_second": 0.24,
+  "success_rate": 0.0
+}
