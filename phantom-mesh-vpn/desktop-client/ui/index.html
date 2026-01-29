@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/phantom-logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PhantomMesh VPN</title>
+    <meta name="description" content="Secure, Private, Unstoppable VPN" />
+    <style>
+      /* Prevent flash of white during load */
+      html, body {
+        background-color: #0a0a0f;
+        margin: 0;
+        padding: 0;
+      }
+      /* Disable text selection for native feel */
+      * {
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      /* Allow text selection in specific areas */
+      input, textarea, [data-selectable] {
+        user-select: text;
+        -webkit-user-select: text;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
