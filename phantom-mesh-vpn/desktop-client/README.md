@@ -102,12 +102,12 @@ cargo tauri build
 
 ### Latest Release (v1.0.0)
 
-| Platform | Format | Size |
-|----------|--------|------|
-| Windows | MSI Installer | 2.38 MB |
-| Windows | NSIS Setup | 1.73 MB |
-| macOS | DMG | Coming Soon |
-| Linux | AppImage | Coming Soon |
+| Platform | Format        | Size        |
+| -------- | ------------- | ----------- |
+| Windows  | MSI Installer | 2.38 MB     |
+| Windows  | NSIS Setup    | 1.73 MB     |
+| macOS    | DMG           | Coming Soon |
+| Linux    | AppImage      | Coming Soon |
 
 ## 🏗️ Project Structure
 

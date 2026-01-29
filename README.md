@@ -65,12 +65,12 @@ A modern, cross-platform VPN client built with **Tauri 2.0**, **Rust**, and **Re
 
 ### Download
 
-| Platform | Format | Size |
-|----------|--------|------|
-| Windows | [MSI Installer](phantom-mesh-vpn/desktop-client/target/release/bundle/msi/) | 2.38 MB |
-| Windows | [NSIS Setup](phantom-mesh-vpn/desktop-client/target/release/bundle/nsis/) | 1.73 MB |
-| macOS | DMG | Coming Soon |
-| Linux | AppImage | Coming Soon |
+| Platform | Format                                                                      | Size        |
+| -------- | --------------------------------------------------------------------------- | ----------- |
+| Windows  | [MSI Installer](phantom-mesh-vpn/desktop-client/target/release/bundle/msi/) | 2.38 MB     |
+| Windows  | [NSIS Setup](phantom-mesh-vpn/desktop-client/target/release/bundle/nsis/)   | 1.73 MB     |
+| macOS    | DMG                                                                         | Coming Soon |
+| Linux    | AppImage                                                                    | Coming Soon |
 
 ---
 
