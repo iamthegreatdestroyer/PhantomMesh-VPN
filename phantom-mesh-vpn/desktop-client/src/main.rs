@@ -24,7 +24,7 @@ use tray::setup_system_tray;
 
 fn main() {
     // Initialize logging
-    let subscriber = FmtSubscriber::builder()
+    FmtSubscriber::builder()
         .with_max_level(Level::DEBUG)
         .with_target(true)
         .with_thread_names(true)
@@ -62,10 +62,10 @@ fn main() {
             setup_system_tray(app)?;
 
             // Get main window and configure it
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(_window) = app.get_webview_window("main") {
                 // Enable devtools in debug mode
                 #[cfg(debug_assertions)]
-                window.open_devtools();
+                _window.open_devtools();
 
                 info!("Main window initialized successfully");
             }

@@ -1,10 +1,15 @@
 //! VPN client core functionality
+//!
+//! This module contains the core VPN connection logic that will be used
+//! once we integrate with the actual PhantomMesh VPN backend.
+
+#![allow(dead_code)]
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::info;
 
-use crate::error::{VpnError, VpnResult};
+use crate::error::VpnResult;
 use crate::state::{ConnectionState, ServerInfo, SessionInfo, VpnProtocol, VpnSettings};
 
 /// VPN client for managing connections
@@ -195,7 +200,7 @@ impl VpnClient {
     async fn exchange_wireguard_keys(
         &self,
         _client_public_key: &str,
-        server: &ServerInfo,
+        _server: &ServerInfo,
     ) -> VpnResult<String> {
         info!("Exchanging WireGuard keys with server");
 

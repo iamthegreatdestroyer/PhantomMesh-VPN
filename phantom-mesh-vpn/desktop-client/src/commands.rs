@@ -4,14 +4,13 @@ use chrono::Utc;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::error::{ErrorResponse, VpnError};
+use crate::error::ErrorResponse;
 use crate::state::*;
-use crate::vpn::VpnClient;
 
-type AppStateHandle = State<'_, Arc<RwLock<AppState>>>;
+type AppStateHandle<'a> = State<'a, Arc<RwLock<AppState>>>;
 
 // ============================================================================
 // Connection Commands
@@ -20,7 +19,7 @@ type AppStateHandle = State<'_, Arc<RwLock<AppState>>>;
 /// Connect to a specific VPN server
 #[tauri::command]
 pub async fn connect(
-    state: AppStateHandle,
+    state: AppStateHandle<'_>,
     server_id: String,
 ) -> Result<ConnectResponse, ErrorResponse> {
     info!("🔌 Connecting to server: {}", server_id);
@@ -65,7 +64,7 @@ pub async fn connect(
 
 /// Disconnect from VPN
 #[tauri::command]
-pub async fn disconnect(state: AppStateHandle) -> Result<(), ErrorResponse> {
+pub async fn disconnect(state: AppStateHandle<'_>) -> Result<(), ErrorResponse> {
     info!("🔌 Disconnecting from VPN...");
 
     let mut app_state = state.write().await;
@@ -86,7 +85,7 @@ pub async fn disconnect(state: AppStateHandle) -> Result<(), ErrorResponse> {
 /// Quick connect to the best available server
 #[tauri::command]
 pub async fn quick_connect(
-    state: AppStateHandle,
+    state: AppStateHandle<'_>,
     criteria: Option<String>,
 ) -> Result<ConnectResponse, ErrorResponse> {
     info!("⚡ Quick connect with criteria: {:?}", criteria);
@@ -104,9 +103,11 @@ pub async fn quick_connect(
 
 /// Get current connection status
 #[tauri::command]
-pub async fn get_connection_status(state: AppStateHandle) -> ConnectionState {
+pub async fn get_connection_status(
+    state: AppStateHandle<'_>,
+) -> Result<ConnectionState, ErrorResponse> {
     let app_state = state.read().await;
-    app_state.connection.clone()
+    Ok(app_state.connection.clone())
 }
 
 // ============================================================================
@@ -261,15 +262,15 @@ pub async fn ping_server(server_id: String) -> Result<u32, ErrorResponse> {
 
 /// Get current VPN settings
 #[tauri::command]
-pub async fn get_settings(state: AppStateHandle) -> VpnSettings {
+pub async fn get_settings(state: AppStateHandle<'_>) -> Result<VpnSettings, ErrorResponse> {
     let app_state = state.read().await;
-    app_state.settings.clone()
+    Ok(app_state.settings.clone())
 }
 
 /// Update VPN settings
 #[tauri::command]
 pub async fn update_settings(
-    state: AppStateHandle,
+    state: AppStateHandle<'_>,
     settings: VpnSettings,
 ) -> Result<(), ErrorResponse> {
     info!("⚙️ Updating settings...");
@@ -284,7 +285,7 @@ pub async fn update_settings(
 /// Toggle kill switch
 #[tauri::command]
 pub async fn toggle_kill_switch(
-    state: AppStateHandle,
+    state: AppStateHandle<'_>,
     enabled: bool,
 ) -> Result<bool, ErrorResponse> {
     let mut app_state = state.write().await;
@@ -301,7 +302,7 @@ pub async fn toggle_kill_switch(
 /// Toggle auto-connect
 #[tauri::command]
 pub async fn toggle_auto_connect(
-    state: AppStateHandle,
+    state: AppStateHandle<'_>,
     enabled: bool,
 ) -> Result<bool, ErrorResponse> {
     let mut app_state = state.write().await;
@@ -321,14 +322,18 @@ pub async fn toggle_auto_connect(
 
 /// Get connection statistics
 #[tauri::command]
-pub async fn get_connection_stats(state: AppStateHandle) -> ConnectionStats {
+pub async fn get_connection_stats(
+    state: AppStateHandle<'_>,
+) -> Result<ConnectionStats, ErrorResponse> {
     let app_state = state.read().await;
-    app_state.stats.clone()
+    Ok(app_state.stats.clone())
 }
 
 /// Get bandwidth usage
 #[tauri::command]
-pub async fn get_bandwidth_usage(state: AppStateHandle) -> Result<BandwidthUsage, ErrorResponse> {
+pub async fn get_bandwidth_usage(
+    state: AppStateHandle<'_>,
+) -> Result<BandwidthUsage, ErrorResponse> {
     let app_state = state.read().await;
 
     Ok(BandwidthUsage {

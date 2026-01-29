@@ -1,71 +1,68 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="meshGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="innerGradient" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#6366f1;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  
-  <!-- Background circle -->
-  <circle cx="256" cy="256" r="240" fill="#0a0a0f"/>
-  
-  <!-- Outer ring -->
-  <circle cx="256" cy="256" r="220" fill="none" stroke="url(#meshGradient)" stroke-width="8"/>
-  
-  <!-- Mesh pattern - hexagonal network -->
-  <g fill="none" stroke="url(#meshGradient)" stroke-width="2" opacity="0.4">
-    <!-- Center hexagon connections -->
-    <path d="M256 120 L340 176 L340 288 L256 344 L172 288 L172 176 Z"/>
-    <path d="M256 120 L256 344"/>
-    <path d="M172 176 L340 288"/>
-    <path d="M340 176 L172 288"/>
-    
-    <!-- Outer connections -->
-    <path d="M256 120 L256 60"/>
-    <path d="M340 176 L400 140"/>
-    <path d="M340 288 L400 324"/>
-    <path d="M256 344 L256 404"/>
-    <path d="M172 288 L112 324"/>
-    <path d="M172 176 L112 140"/>
-    
-    <!-- Additional mesh lines -->
-    <circle cx="256" cy="60" r="8" fill="url(#meshGradient)"/>
-    <circle cx="400" cy="140" r="8" fill="url(#meshGradient)"/>
-    <circle cx="400" cy="324" r="8" fill="url(#meshGradient)"/>
-    <circle cx="256" cy="404" r="8" fill="url(#meshGradient)"/>
-    <circle cx="112" cy="324" r="8" fill="url(#meshGradient)"/>
-    <circle cx="112" cy="140" r="8" fill="url(#meshGradient)"/>
-  </g>
-  
-  <!-- Shield outline -->
-  <path d="M256 100 L360 150 L360 280 C360 340 256 400 256 400 C256 400 152 340 152 280 L152 150 Z" 
-        fill="none" stroke="url(#innerGradient)" stroke-width="4"/>
-  
-  <!-- Inner shield fill -->
-  <path d="M256 120 L340 162 L340 272 C340 320 256 370 256 370 C256 370 172 320 172 272 L172 162 Z" 
-        fill="url(#innerGradient)" opacity="0.15"/>
-  
-  <!-- Phantom 'P' or lock icon -->
-  <g transform="translate(256, 256)">
-    <!-- Lock body -->
-    <rect x="-40" y="-10" width="80" height="70" rx="8" fill="url(#innerGradient)" opacity="0.9"/>
-    <!-- Lock shackle -->
-    <path d="M-25 -10 L-25 -40 C-25 -70 25 -70 25 -40 L25 -10" 
-          fill="none" stroke="url(#innerGradient)" stroke-width="10" stroke-linecap="round"/>
-    <!-- Keyhole -->
-    <circle cx="0" cy="20" r="12" fill="#0a0a0f"/>
-    <rect x="-4" y="20" width="8" height="20" rx="2" fill="#0a0a0f"/>
-  </g>
-  
-  <!-- Decorative nodes at hexagon vertices -->
-  <circle cx="256" cy="120" r="6" fill="url(#meshGradient)"/>
-  <circle cx="340" cy="176" r="6" fill="url(#meshGradient)"/>
-  <circle cx="340" cy="288" r="6" fill="url(#meshGradient)"/>
-  <circle cx="256" cy="344" r="6" fill="url(#meshGradient)"/>
-  <circle cx="172" cy="288" r="6" fill="url(#meshGradient)"/>
-  <circle cx="172" cy="176" r="6" fill="url(#meshGradient)"/>
+    <defs>
+        <linearGradient id="meshGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+        </linearGradient>
+        <linearGradient id="innerGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#6366f1;stop-opacity:1" />
+        </linearGradient>
+    </defs>
+
+    <!-- Background circle -->
+    <circle cx="256" cy="256" r="240" fill="#0a0a0f"/>
+
+    <!-- Outer ring -->
+    <circle cx="256" cy="256" r="220" fill="none" stroke="url(#meshGradient)" stroke-width="8"/>
+
+    <!-- Mesh pattern - hexagonal network -->
+    <g fill="none" stroke="url(#meshGradient)" stroke-width="2" opacity="0.4">
+        <!-- Center hexagon connections -->
+        <path d="M256 120 L340 176 L340 288 L256 344 L172 288 L172 176 Z"/>
+        <path d="M256 120 L256 344"/>
+        <path d="M172 176 L340 288"/>
+        <path d="M340 176 L172 288"/>
+
+        <!-- Outer connections -->
+        <path d="M256 120 L256 60"/>
+        <path d="M340 176 L400 140"/>
+        <path d="M340 288 L400 324"/>
+        <path d="M256 344 L256 404"/>
+        <path d="M172 288 L112 324"/>
+        <path d="M172 176 L112 140"/>
+
+        <!-- Additional mesh lines -->
+        <circle cx="256" cy="60" r="8" fill="url(#meshGradient)"/>
+        <circle cx="400" cy="140" r="8" fill="url(#meshGradient)"/>
+        <circle cx="400" cy="324" r="8" fill="url(#meshGradient)"/>
+        <circle cx="256" cy="404" r="8" fill="url(#meshGradient)"/>
+        <circle cx="112" cy="324" r="8" fill="url(#meshGradient)"/>
+        <circle cx="112" cy="140" r="8" fill="url(#meshGradient)"/>
+    </g>
+
+    <!-- Shield outline -->
+    <path d="M256 100 L360 150 L360 280 C360 340 256 400 256 400 C256 400 152 340 152 280 L152 150 Z" fill="none" stroke="url(#innerGradient)" stroke-width="4"/>
+
+    <!-- Inner shield fill -->
+    <path d="M256 120 L340 162 L340 272 C340 320 256 370 256 370 C256 370 172 320 172 272 L172 162 Z" fill="url(#innerGradient)" opacity="0.15"/>
+
+    <!-- Phantom 'P' or lock icon -->
+    <g transform="translate(256, 256)">
+        <!-- Lock body -->
+        <rect x="-40" y="-10" width="80" height="70" rx="8" fill="url(#innerGradient)" opacity="0.9"/>
+        <!-- Lock shackle -->
+        <path d="M-25 -10 L-25 -40 C-25 -70 25 -70 25 -40 L25 -10" fill="none" stroke="url(#innerGradient)" stroke-width="10" stroke-linecap="round"/>
+        <!-- Keyhole -->
+        <circle cx="0" cy="20" r="12" fill="#0a0a0f"/>
+        <rect x="-4" y="20" width="8" height="20" rx="2" fill="#0a0a0f"/>
+    </g>
+
+    <!-- Decorative nodes at hexagon vertices -->
+    <circle cx="256" cy="120" r="6" fill="url(#meshGradient)"/>
+    <circle cx="340" cy="176" r="6" fill="url(#meshGradient)"/>
+    <circle cx="340" cy="288" r="6" fill="url(#meshGradient)"/>
+    <circle cx="256" cy="344" r="6" fill="url(#meshGradient)"/>
+    <circle cx="172" cy="288" r="6" fill="url(#meshGradient)"/>
+    <circle cx="172" cy="176" r="6" fill="url(#meshGradient)"/>
 </svg>

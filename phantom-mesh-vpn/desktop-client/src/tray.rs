@@ -3,7 +3,7 @@
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, Manager,
+    App, Emitter, Manager,
 };
 use tracing::info;
 
@@ -146,7 +146,8 @@ pub fn setup_system_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Update tray icon based on connection state
-pub fn update_tray_icon(app: &tauri::AppHandle, connected: bool, server_name: Option<&str>) {
+#[allow(dead_code)]
+pub fn update_tray_icon(_app: &tauri::AppHandle, connected: bool, server_name: Option<&str>) {
     // In a full implementation, we would:
     // 1. Change the tray icon to show connected/disconnected state
     // 2. Update the tooltip with connection info

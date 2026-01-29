@@ -13,7 +13,6 @@ import { open } from "@tauri-apps/plugin-shell";
 
 export default function About() {
   const version = "1.0.0";
-  const buildDate = "2025-01-15";
 
   const handleCheckUpdates = async () => {
     try {

@@ -14,6 +14,11 @@ A modern, cross-platform VPN client built with Tauri 2.0, Rust, and React.
 - **Favorites**: Save your preferred servers
 - **Split Tunneling**: Exclude specific apps from VPN
 - **Connection Stats**: Real-time bandwidth and duration
+- **Multi-Level Encryption**: Four encryption strength options:
+  - 🔐 **AES-256** (Default) - Industry-standard encryption
+  - ⚡ **ChaCha20** - High-speed encryption for mobile/low-power devices
+  - 🎖️ **Military Grade** - AES-256-GCM with enhanced key derivation
+  - 🛡️ **Paranoid Mode** - Triple-layer encryption with maximum security
 
 ## 📋 Prerequisites
 
@@ -90,9 +95,19 @@ cargo tauri build
 
 ### Build outputs:
 
-- **Windows**: `target/release/bundle/nsis/PhantomMesh VPN_x.x.x_x64-setup.exe`
+- **Windows MSI**: `target/release/bundle/msi/PhantomMesh VPN_x.x.x_x64_en-US.msi` (~2.4 MB)
+- **Windows NSIS**: `target/release/bundle/nsis/PhantomMesh VPN_x.x.x_x64-setup.exe` (~1.7 MB)
 - **macOS**: `target/release/bundle/dmg/PhantomMesh VPN_x.x.x_x64.dmg`
 - **Linux**: `target/release/bundle/appimage/PhantomMesh VPN_x.x.x_amd64.AppImage`
+
+### Latest Release (v1.0.0)
+
+| Platform | Format | Size |
+|----------|--------|------|
+| Windows | MSI Installer | 2.38 MB |
+| Windows | NSIS Setup | 1.73 MB |
+| macOS | DMG | Coming Soon |
+| Linux | AppImage | Coming Soon |
 
 ## 🏗️ Project Structure
 
@@ -145,6 +160,7 @@ desktop-client/
 - **Auto-Connect**: Connects on startup using Quick Connect logic
 - **Protocol**: WireGuard (fastest), OpenVPN (most compatible), Stealth (bypasses firewalls)
 - **Split Tunneling**: Configure which apps bypass the VPN
+- **Encryption Level**: Choose from AES-256 (default), ChaCha20, Military Grade, or Paranoid Mode
 
 ## 🔒 Security Features
 

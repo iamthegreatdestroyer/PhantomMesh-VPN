@@ -4,6 +4,9 @@ use serde::Serialize;
 use thiserror::Error;
 
 /// Application-level errors
+///
+/// These error variants are used by the VPN client for production error handling.
+#[allow(dead_code)]
 #[derive(Debug, Error)]
 pub enum VpnError {
     #[error("Connection failed: {0}")]
@@ -96,6 +99,7 @@ impl From<VpnError> for ErrorResponse {
 }
 
 /// Result type alias for VPN operations
+#[allow(dead_code)]
 pub type VpnResult<T> = Result<T, VpnError>;
 
 impl From<reqwest::Error> for VpnError {

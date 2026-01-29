@@ -52,7 +52,7 @@ pub enum ConnectionState {
 }
 
 /// VPN server information
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerInfo {
     pub id: String,
@@ -75,6 +75,7 @@ pub struct VpnSettings {
     pub kill_switch: bool,
     pub auto_connect: bool,
     pub protocol: VpnProtocol,
+    pub encryption_level: EncryptionLevel,
     pub split_tunneling: bool,
     pub excluded_apps: Vec<String>,
     pub dns_servers: Vec<String>,
@@ -88,6 +89,7 @@ impl Default for VpnSettings {
             kill_switch: true,
             auto_connect: false,
             protocol: VpnProtocol::WireGuard,
+            encryption_level: EncryptionLevel::Aes256, // Default: balanced speed/security
             split_tunneling: false,
             excluded_apps: Vec::new(),
             dns_servers: vec!["1.1.1.1".to_string(), "1.0.0.1".to_string()],
@@ -105,6 +107,22 @@ pub enum VpnProtocol {
     WireGuard,
     OpenVPN,
     Stealth,
+}
+
+/// Encryption strength levels
+///
+/// - `Aes256`: AES-256-GCM (Default, balanced speed/security)
+/// - `ChaCha20`: ChaCha20-Poly1305 (Optimized for ARM/mobile)
+/// - `Military`: AES-256-GCM-SIV (Nonce-misuse resistant, high security)
+/// - `Paranoid`: Cascade AES→ChaCha20 (Double encryption, maximum protection)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EncryptionLevel {
+    #[default]
+    Aes256,
+    ChaCha20,
+    Military,
+    Paranoid,
 }
 
 /// Active VPN session information

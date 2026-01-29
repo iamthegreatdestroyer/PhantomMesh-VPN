@@ -5,8 +5,6 @@ import {
   Star,
   StarOff,
   Signal,
-  Users,
-  Zap,
   Globe,
   Shield,
   Play,
@@ -84,7 +82,6 @@ export default function Servers() {
     {} as Record<string, ServerInfo[]>,
   );
 
-  const isConnected = connectionState === "connected";
   const isConnecting = connectionState === "connecting";
 
   const handleConnect = async (serverId: string) => {
@@ -222,11 +219,9 @@ export default function Servers() {
                           {server.features.map((feature) => {
                             const Icon = featureIcons[feature] || Globe;
                             return (
-                              <Icon
-                                key={feature}
-                                className="w-3 h-3 text-white/30"
-                                title={feature}
-                              />
+                              <span key={feature} title={feature}>
+                                <Icon className="w-3 h-3 text-white/30" />
+                              </span>
                             );
                           })}
                         </div>

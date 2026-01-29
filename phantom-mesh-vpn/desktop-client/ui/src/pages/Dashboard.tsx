@@ -10,7 +10,6 @@ import {
   Clock,
   Lock,
   Unlock,
-  Server,
 } from "lucide-react";
 import clsx from "clsx";
 import { useVpnStore } from "../stores/vpnStore";
@@ -21,7 +20,6 @@ export default function Dashboard() {
     connectionState,
     currentServer,
     connectionStats,
-    connect,
     disconnect,
     quickConnect,
     fetchStats,

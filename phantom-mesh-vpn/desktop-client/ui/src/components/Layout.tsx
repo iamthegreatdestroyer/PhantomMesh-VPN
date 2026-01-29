@@ -1,16 +1,7 @@
 import { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Shield,
-  Globe,
-  Settings,
-  User,
-  Info,
-  Minimize2,
-  X,
-  Minus,
-} from "lucide-react";
+import { Shield, Globe, Settings, User, Info, X, Minus } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import clsx from "clsx";
 import { useVpnStore } from "../stores/vpnStore";

@@ -45,6 +45,34 @@ docker-compose up
 - 📋 [Phase P1-005 Summary](PHASE_P1_005_COMPLETION_SUMMARY.md)
 - 🤖 [Automation Details](COMPONENTS_5_6_INTEGRATION_SUMMARY.md)
 - 🏗️ [Architecture](phantom-mesh-vpn/docs/architecture.md)
+- 🖥️ [Desktop Client](phantom-mesh-vpn/desktop-client/README.md)
+
+---
+
+## 🖥️ Desktop Client
+
+**Status:** ✅ PRODUCTION READY v1.0.0
+
+A modern, cross-platform VPN client built with **Tauri 2.0**, **Rust**, and **React**.
+
+### Highlights
+
+- 🎨 Modern glass-morphism UI with dark theme
+- 🔐 Multi-level encryption (AES-256, ChaCha20, Military, Paranoid)
+- ⚡ Native performance with Rust backend
+- 🖱️ System tray integration with quick connect
+- 🛡️ Kill switch and auto-connect features
+
+### Download
+
+| Platform | Format | Size |
+|----------|--------|------|
+| Windows | [MSI Installer](phantom-mesh-vpn/desktop-client/target/release/bundle/msi/) | 2.38 MB |
+| Windows | [NSIS Setup](phantom-mesh-vpn/desktop-client/target/release/bundle/nsis/) | 1.73 MB |
+| macOS | DMG | Coming Soon |
+| Linux | AppImage | Coming Soon |
+
+---
 
 ### Next Phase
 

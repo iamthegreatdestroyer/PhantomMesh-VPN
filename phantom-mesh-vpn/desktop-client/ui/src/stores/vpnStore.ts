@@ -11,6 +11,15 @@ export type ConnectionState =
 
 export type VpnProtocol = "wireguard" | "openvpn" | "stealth";
 
+/**
+ * Encryption strength levels:
+ * - aes256: AES-256-GCM (Default, balanced speed/security)
+ * - chacha20: ChaCha20-Poly1305 (Optimized for ARM/mobile)
+ * - military: AES-256-GCM-SIV (Nonce-misuse resistant, high security)
+ * - paranoid: Cascade AES→ChaCha20 (Double encryption, maximum protection)
+ */
+export type EncryptionLevel = "aes256" | "chacha20" | "military" | "paranoid";
+
 export interface ServerInfo {
   id: string;
   name: string;
@@ -38,6 +47,7 @@ export interface VpnSettings {
   killSwitch: boolean;
   autoConnect: boolean;
   protocol: VpnProtocol;
+  encryptionLevel: EncryptionLevel;
   splitTunneling: boolean;
   excludedApps: string[];
   dnsServers: string[];
@@ -81,6 +91,7 @@ const defaultSettings: VpnSettings = {
   killSwitch: true,
   autoConnect: false,
   protocol: "wireguard",
+  encryptionLevel: "aes256", // Default: AES-256-GCM (balanced speed/security)
   splitTunneling: false,
   excludedApps: [],
   dnsServers: ["1.1.1.1", "1.0.0.1"],

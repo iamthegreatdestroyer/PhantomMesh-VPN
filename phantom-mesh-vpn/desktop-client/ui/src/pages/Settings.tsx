@@ -8,12 +8,10 @@ import {
   Monitor,
   Network,
   Wifi,
-  Eye,
-  EyeOff,
   ChevronRight,
 } from "lucide-react";
 import clsx from "clsx";
-import { useVpnStore, VpnProtocol } from "../stores/vpnStore";
+import { useVpnStore, VpnProtocol, EncryptionLevel } from "../stores/vpnStore";
 
 interface SettingToggleProps {
   label: string;
@@ -143,6 +141,13 @@ export default function Settings() {
     { value: "stealth", label: "Stealth (Obfuscated)" },
   ];
 
+  const encryptionOptions = [
+    { value: "aes256", label: "AES-256 (Default)" },
+    { value: "chacha20", label: "ChaCha20-Poly1305" },
+    { value: "military", label: "Military Grade (AES-256-GCM-SIV)" },
+    { value: "paranoid", label: "Paranoid (Cascade Encryption)" },
+  ];
+
   // Wrapper handlers for async functions with proper error handling
   const handleToggleKillSwitch = async () => {
     try {
@@ -160,7 +165,9 @@ export default function Settings() {
     }
   };
 
-  const handleUpdateSettings = async (partial: Parameters<typeof updateSettings>[0]) => {
+  const handleUpdateSettings = async (
+    partial: Parameters<typeof updateSettings>[0],
+  ) => {
     try {
       await updateSettings(partial);
     } catch {
@@ -196,7 +203,19 @@ export default function Settings() {
             icon={Shield}
             value={settings.protocol}
             options={protocolOptions}
-            onChange={(v) => handleUpdateSettings({ protocol: v as VpnProtocol })}
+            onChange={(v) =>
+              handleUpdateSettings({ protocol: v as VpnProtocol })
+            }
+          />
+          <SettingSelect
+            label="Encryption"
+            description="Choose encryption strength level"
+            icon={Lock}
+            value={settings.encryptionLevel}
+            options={encryptionOptions}
+            onChange={(v) =>
+              handleUpdateSettings({ encryptionLevel: v as EncryptionLevel })
+            }
           />
         </div>
       </section>
@@ -252,7 +271,9 @@ export default function Settings() {
             icon={Bell}
             enabled={settings.showNotifications}
             onToggle={() =>
-              handleUpdateSettings({ showNotifications: !settings.showNotifications })
+              handleUpdateSettings({
+                showNotifications: !settings.showNotifications,
+              })
             }
           />
         </div>
