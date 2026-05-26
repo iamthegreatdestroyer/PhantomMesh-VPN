@@ -501,10 +501,7 @@ impl ThreatEngine {
 
     /// Receive threat intelligence from other agents
     pub async fn receive_threat_intel(&mut self) -> Option<ThreatIntel> {
-        match self.intel_rx.try_recv() {
-            Ok(intel) => Some(intel),
-            Err(_) => None,
-        }
+        self.intel_rx.try_recv().ok()
     }
 
     /// Update signature database

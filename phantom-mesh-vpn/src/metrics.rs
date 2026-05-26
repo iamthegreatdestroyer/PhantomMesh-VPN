@@ -8,10 +8,9 @@
 
 use lazy_static::lazy_static;
 use prometheus::{
-    Counter, Encoder, Gauge, Histogram, HistogramOpts, IntCounterVec, IntGaugeVec, Opts,
+    Encoder, Gauge, Histogram, HistogramOpts, IntCounterVec, IntGaugeVec, Opts,
     TextEncoder,
 };
-use std::sync::Mutex;
 
 // Global metrics registry
 lazy_static! {
@@ -162,7 +161,7 @@ pub fn update_system_metrics() {
     sys.refresh_all();
 
     // Memory usage
-    let total_memory = sys.total_memory() as f64 * 1024.0; // Convert to bytes
+    let _total_memory = sys.total_memory() as f64 * 1024.0; // Convert to bytes
     let used_memory = sys.used_memory() as f64 * 1024.0;
     SYSTEM_MEMORY_USAGE_BYTES.set(used_memory);
 

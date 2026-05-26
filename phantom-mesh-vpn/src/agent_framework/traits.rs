@@ -3,7 +3,6 @@
 use crate::agent_framework::message::Message;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 #[async_trait]
 pub trait Agent: Send + Sync {

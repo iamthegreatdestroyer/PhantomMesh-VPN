@@ -43,9 +43,9 @@ class AgentType(Enum):
     """Types of agents in the swarm."""
     APEX = "apex"
     CIPHER = "cipher"
-    ARCHITECT = "architect"
     FORTRESS = "fortress"
     GENESIS = "genesis"
+    AEGIS = "aegis"
     NEXUS = "nexus"
     OMNISCIENT = "omniscient"
     PHANTOM = "phantom"
@@ -223,8 +223,8 @@ class PhantomMetricsExporter:
         type_str = agent_type.value
 
         # Update counters
-        self.agent_tasks_completed.labels(agent_type=type_str, agent_id=agent_id).inc_by(metrics.tasks_completed)
-        self.agent_tasks_failed.labels(agent_type=type_str, agent_id=agent_id, failure_reason="unknown").inc_by(metrics.tasks_failed)
+        self.agent_tasks_completed.labels(agent_type=type_str, agent_id=agent_id).inc(metrics.tasks_completed)
+        self.agent_tasks_failed.labels(agent_type=type_str, agent_id=agent_id, failure_reason="unknown").inc(metrics.tasks_failed)
 
         # Update gauges
         self.agent_memory_usage.labels(agent_type=type_str, agent_id=agent_id).set(metrics.memory_usage)

@@ -271,7 +271,8 @@ mod agent_tests {
     #[tokio::test]
     async fn test_framework_initialization() {
         // This tests the full framework initialization
-        let framework = agent_framework::init_framework().await;
+        let framework: Result<Arc<AgentCoordinator>, String> =
+            phantom_mesh::agent_framework::init_framework().await;
         assert!(framework.is_ok(), "Framework initialization failed");
 
         let coordinator = framework.unwrap();

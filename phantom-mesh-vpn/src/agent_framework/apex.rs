@@ -19,7 +19,7 @@ use dashmap::DashMap;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::time::Instant;
-use tracing::{info, debug, warn, error};
+use tracing::{info, debug, warn};
 
 /// Strategic decision-making agent
 pub struct ApexAgent {

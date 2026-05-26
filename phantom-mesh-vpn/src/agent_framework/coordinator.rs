@@ -69,7 +69,7 @@ impl AgentCoordinator {
     }
 
     /// Send a message to target agent(s)
-    pub async fn send_message(&self, mut message: Message) -> Result<(), String> {
+    pub async fn send_message(&self, message: Message) -> Result<(), String> {
         debug!("Routing message {} from {} to {} target(s)", 
             message.id, message.from.0, message.to.len());
 
@@ -127,7 +127,7 @@ impl AgentCoordinator {
                 drop(agent_entry); // Release lock
 
                 match agent.process_message(message.clone()).await {
-                    Ok(Some(response)) => {
+                    Ok(Some(_response)) => {
                         debug!("Agent {} produced response to message {}", target.0, msg_id);
                         // Could queue response for further routing
                     }

@@ -16,9 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::super::metrics::{MetricsServer, METRICS_REGISTRY};
+use super::super::metrics::METRICS_REGISTRY;
 use super::super::security_layer::threat_engine::{ThreatEngine, ThreatResult, PerformanceMetrics};
-use prometheus::Encoder;
 
 /// REST API gateway for VPN management
 pub struct ApiGateway {

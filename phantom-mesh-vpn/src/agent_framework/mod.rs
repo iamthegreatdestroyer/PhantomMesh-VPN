@@ -33,8 +33,7 @@ pub use message::{AgentId, Message, Priority};
 pub use traits::Agent;
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::info;
 
 /// Initialize all agents and prepare the framework
 pub async fn init_framework() -> Result<Arc<AgentCoordinator>, String> {

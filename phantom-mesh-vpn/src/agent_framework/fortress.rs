@@ -19,7 +19,7 @@ use dashmap::DashMap;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::time::Instant;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Threat detection and security analysis agent
 pub struct FortressAgent {

@@ -50,6 +50,7 @@ crossbeam = "0.8"  # Concurrent utilities
 
 # Agent Framework
 async-trait = "0.1"  # Async trait support
+thiserror = "1.0"  # Ergonomic error types
 uuid = { version = "1.6", features = ["v4", "serde"] }  # UUID generation
 chrono = { version = "0.4", features = ["serde"] }  # Datetime handling
 parking_lot = "0.12"  # Parking lot mutex for load testing

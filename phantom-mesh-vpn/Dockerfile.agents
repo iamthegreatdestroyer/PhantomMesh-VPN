@@ -46,8 +46,9 @@ USER phantom
 EXPOSE 24520 24521
 
 # Health check (will be overridden by service-specific commands)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || curl -f http://localhost:8081/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || \
+        python -c "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')" || exit 1
 
 # Default command (can be overridden)
 CMD ["python", "-m", "agents.metrics"]

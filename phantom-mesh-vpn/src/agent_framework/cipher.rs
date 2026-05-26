@@ -19,7 +19,7 @@ use dashmap::DashMap;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::time::Instant;
-use tracing::{info, debug, warn, error};
+use tracing::{info, debug, error};
 
 /// Cryptographic operations and key management agent
 pub struct CipherAgent {
@@ -307,7 +307,7 @@ impl Agent for CipherAgent {
         let uptime_seconds = self.start_time.elapsed().as_secs();
         let messages_processed = self.message_count.load(std::sync::atomic::Ordering::Relaxed);
         let messages_failed = self.error_count.load(std::sync::atomic::Ordering::Relaxed);
-        let operations = self.cipher_operations_performed.load(std::sync::atomic::Ordering::Relaxed);
+        let _operations = self.cipher_operations_performed.load(std::sync::atomic::Ordering::Relaxed);
 
         AgentMetrics {
             agent_id: self.id.0.clone(),

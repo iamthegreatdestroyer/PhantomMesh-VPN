@@ -136,7 +136,7 @@ impl TemporalQueue {
     /// Add fragment with temporal delay based on coordinate
     pub fn enqueue(&mut self, fragment: DimensionalFragment) {
         let base_delay = Duration::from_millis(fragment.coordinate.temporal as u64 * 10); // 0-1.27 seconds
-        let jitter = Duration::from_millis((fragment.coordinate.frequency as u64 % 100)); // Add jitter
+        let jitter = Duration::from_millis(fragment.coordinate.frequency as u64 % 100); // Add jitter
         let delay = (base_delay + jitter).min(self.max_delay);
 
         let transmit_time = Instant::now() + delay;
@@ -276,7 +276,7 @@ impl FragmentationEngine {
         let base_size = packet.len() / fragment_count as usize;
         let remainder = packet.len() % fragment_count as usize;
 
-        let mut start = 0;
+        let mut start: usize = 0;
         for i in 0..fragment_count {
             let mut size = base_size;
             if i < remainder as u32 {
@@ -284,8 +284,8 @@ impl FragmentationEngine {
             }
 
             // Add overlap for error correction
-            let overlap = if i > 0 { self.overlap_size } else { 0 };
-            let actual_start = if start >= overlap { start - overlap } else { 0 };
+            let overlap: usize = if i > 0 { self.overlap_size } else { 0 };
+            let actual_start = start.saturating_sub(overlap);
             let actual_size = (size + overlap).min(packet.len() - actual_start);
 
             fragments.push(packet[actual_start..actual_start + actual_size].to_vec());
@@ -685,7 +685,7 @@ impl SigmaVault {
         buffer.push(fragment);
 
         // Clean up old fragments
-        let now = Instant::now();
+        let _now = Instant::now();
         buffer.retain(|f| {
             let fragment_time = UNIX_EPOCH + Duration::from_secs(f.timestamp);
             let now_duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::from_secs(0));
@@ -747,7 +747,7 @@ impl SigmaVault {
         let mut sessions = self.sessions.write().await;
         let mut reassembly_buffers = self.reassembly_buffers.write().await;
 
-        let now = Instant::now();
+        let _now = Instant::now();
 
         // Remove expired sessions
         sessions.retain(|_, session| session.created_at.elapsed() < self.max_session_age);

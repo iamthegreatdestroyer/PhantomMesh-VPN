@@ -27,7 +27,7 @@ import yaml
 import os
 
 from .discovery import get_discovery_service
-from .metrics import get_metrics_exporter
+from .metrics import get_metrics_exporter, SwarmMetrics, AgentMetrics, AgentType
 
 # Load logging configuration
 log_config_path = "/etc/prometheus/logging.yml"
@@ -118,6 +118,16 @@ class AgentState:
     last_action: datetime = field(default_factory=lambda: datetime.now(UTC))
     performance_score: float = 1.0
     mnemonic_keys: list[str] = field(default_factory=list)
+    current_task: str | None = None
+    tasks_completed: int = 0
+    tasks_failed: int = 0
+    memory_usage: float = 0.0
+    cpu_usage: float = 0.0
+    active_time: float = 0.0
+
+    @property
+    def is_active(self) -> bool:
+        return self.active
 
 
 class EliteAgent(ABC):
@@ -435,9 +445,17 @@ class PhantomOrchestrator:
 async def main() -> None:
     """Bootstrap the PhantomMesh Agent Swarm."""
     orchestrator = PhantomOrchestrator()
+    exporter = get_metrics_exporter()
+
+    async def run_metrics_server():
+        await exporter.start_server(host="0.0.0.0", port=8000)
 
     try:
-        await orchestrator.run()
+        await asyncio.gather(
+            orchestrator.run(),
+            run_metrics_server(),
+            return_exceptions=True,
+        )
     except KeyboardInterrupt:
         logger.info("shutdown_signal_received")
     finally:
