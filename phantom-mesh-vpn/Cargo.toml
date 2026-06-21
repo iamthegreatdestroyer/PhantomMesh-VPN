@@ -80,11 +80,7 @@ proptest = "1.4"
 
 [lib]
 name = "phantom_mesh"
-crate-type = ["cdylib", "rlib"]
-
-[[bin]]
-name = "phantom-node"
-path = "src/main.rs"
+crate-type = ["rlib"]
 
 [profile.release]
 lto = true
