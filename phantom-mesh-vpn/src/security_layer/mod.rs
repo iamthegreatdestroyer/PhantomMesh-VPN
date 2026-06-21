@@ -6,5 +6,6 @@
 
 // Re-export submodules
 pub mod crypto_manager;
+pub mod handshake;
 pub mod sigma_vault;
 pub mod threat_engine;
