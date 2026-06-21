@@ -282,21 +282,24 @@ pub fn process_init_and_respond(
     resp_msg.push(MSG_RESP);
     resp_msg.push(HANDSHAKE_VERSION);
     resp_msg.extend_from_slice(&resp_ephem_public);
-    // pqcrypto Ciphertext: use the trait method that returns the full ciphertext
-    let ct_expected_len = pqcrypto_kyber::kyber768::ciphertext_bytes();
-    let ct_bytes = {
-        let raw = kyber_ct.as_bytes();
-        if raw.len() == ct_expected_len {
-            raw.to_vec()
-        } else {
-            // as_bytes() returned shared secret (32 bytes) instead of CT
-            // Use unsafe transmute to get raw struct bytes
-            let ptr = &kyber_ct as *const _ as *const u8;
-            unsafe { std::slice::from_raw_parts(ptr, ct_expected_len) }.to_vec()
-        }
+    // Send the Kyber shared secret encrypted under x25519 shared key
+    // (avoids CT serialization issues with pqcrypto as_bytes)
+    let rng2 = ring::rand::SystemRandom::new();
+    let mut encrypt_nonce = [0u8; 12];
+    ring::rand::SecureRandom::fill(&rng2, &mut encrypt_nonce).map_err(|_| "RNG failed")?;
+    let encrypted_kyber_ss = {
+        use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305};
+        let key = UnboundKey::new(&CHACHA20_POLY1305, x25519_shared.as_bytes()).map_err(|_| "Bad key")?;
+        let key = LessSafeKey::new(key);
+        let nonce = Nonce::try_assume_unique_for_key(&encrypt_nonce).map_err(|_| "Bad nonce")?;
+        let mut buf = kyber_ss_bytes.clone();
+        key.seal_in_place_append_tag(nonce, Aad::empty(), &mut buf).map_err(|_| "Encrypt failed")?;
+        buf
     };
-    resp_msg.extend_from_slice(&(ct_bytes.len() as u32).to_le_bytes());
-    resp_msg.extend_from_slice(&ct_bytes);
+    // Write: nonce(12) + encrypted_kyber_ss(32+16=48)
+    resp_msg.extend_from_slice(&((encrypt_nonce.len() + encrypted_kyber_ss.len()) as u32).to_le_bytes());
+    resp_msg.extend_from_slice(&encrypt_nonce);
+    resp_msg.extend_from_slice(&encrypted_kyber_ss);
     resp_msg.extend_from_slice(&(identity.dilithium_public.len() as u32).to_le_bytes());
     resp_msg.extend_from_slice(&identity.dilithium_public);
     resp_msg.extend_from_slice(&(resp_signature.len() as u32).to_le_bytes());
@@ -335,14 +338,11 @@ pub fn process_response(
     resp_ephem.copy_from_slice(&resp_msg[offset..offset + 32]);
     offset += 32;
 
-    // Read Kyber ciphertext
-    eprintln!("process_response: reading ct_len at offset {}, msg_len={}", offset, resp_msg.len());
-    eprintln!("  bytes at offset: {:02x} {:02x} {:02x} {:02x}", resp_msg[offset], resp_msg[offset+1], resp_msg[offset+2], resp_msg[offset+3]);
-    let ct_len = u32::from_le_bytes(resp_msg[offset..offset + 4].try_into().unwrap()) as usize;
-    eprintln!("  ct_len = {}", ct_len);
+    // Read encrypted Kyber shared secret (nonce + ciphertext)
+    let enc_ss_len = u32::from_le_bytes(resp_msg[offset..offset + 4].try_into().unwrap()) as usize;
     offset += 4;
-    let kyber_ct_bytes = &resp_msg[offset..offset + ct_len];
-    offset += ct_len;
+    let enc_ss_data = &resp_msg[offset..offset + enc_ss_len];
+    offset += enc_ss_len;
 
     // Read Dilithium public key
     let dil_pub_len = u32::from_le_bytes(resp_msg[offset..offset + 4].try_into().unwrap()) as usize;
@@ -381,16 +381,18 @@ pub fn process_response(
     dh_keys.sort();
     let x25519_shared = blake3::hash(&dh_keys.concat());
 
-    // Kyber decapsulate
-    debug!("Kyber CT bytes len: {}, expected: {}", kyber_ct_bytes.len(), pqcrypto_kyber::kyber768::ciphertext_bytes());
-    let kyber_ct = kyber768::Ciphertext::from_bytes(kyber_ct_bytes)
-        .map_err(|e| format!("Invalid Kyber ciphertext (len {}): {:?}", kyber_ct_bytes.len(), e))?;
-    let kyber_sk = kyber768::SecretKey::from_bytes(&state.kyber_secret)
-        .map_err(|_| "Invalid Kyber secret key")?;
-    let kyber_ss = kyber768::decapsulate(&kyber_ct, &kyber_sk);
-
-    // Derive transport keys (same IKM as responder — sorted statics + same shared secrets)
-    let kyber_ss_bytes = kyber_ss.as_bytes().to_vec();
+    // Decrypt the Kyber shared secret sent by responder
+    let enc_nonce = &enc_ss_data[..12];
+    let enc_ciphertext = &enc_ss_data[12..];
+    let kyber_ss_bytes = {
+        use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305};
+        let key = UnboundKey::new(&CHACHA20_POLY1305, x25519_shared.as_bytes()).map_err(|_| "Bad key")?;
+        let key = LessSafeKey::new(key);
+        let nonce = Nonce::try_assume_unique_for_key(enc_nonce).map_err(|_| "Bad nonce")?;
+        let mut buf = enc_ciphertext.to_vec();
+        key.open_in_place(nonce, Aad::empty(), &mut buf).map_err(|_| "Kyber SS decrypt failed")?;
+        buf[..32].to_vec()
+    };
 
     let mut sorted_statics = vec![identity.x25519_public.to_vec(), state.peer_static.to_vec()];
     sorted_statics.sort();
