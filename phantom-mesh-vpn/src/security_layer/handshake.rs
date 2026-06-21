@@ -275,9 +275,10 @@ pub fn process_init_and_respond(
     resp_msg.push(MSG_RESP);
     resp_msg.push(HANDSHAKE_VERSION);
     resp_msg.extend_from_slice(&resp_ephem_public);
-    let ct_bytes = kyber_ct.as_bytes();
+    let ct_bytes = kyber_ct.as_bytes().to_vec();
+    debug!("Kyber ciphertext size: {} bytes", ct_bytes.len());
     resp_msg.extend_from_slice(&(ct_bytes.len() as u32).to_le_bytes());
-    resp_msg.extend_from_slice(ct_bytes);
+    resp_msg.extend_from_slice(&ct_bytes);
     resp_msg.extend_from_slice(&(identity.dilithium_public.len() as u32).to_le_bytes());
     resp_msg.extend_from_slice(&identity.dilithium_public);
     resp_msg.extend_from_slice(&(resp_signature.len() as u32).to_le_bytes());
