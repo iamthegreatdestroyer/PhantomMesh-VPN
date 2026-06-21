@@ -313,8 +313,6 @@ pub fn process_init_and_respond(
     };
 
     debug!("Response message total size: {} bytes", resp_msg.len());
-    debug!("  Header: 2, ephem: 32, ct_len_field: 4, ct: {}, dil_len: 4, dil: {}, sig_len: 4, sig: {}",
-        ct_bytes.len(), identity.dilithium_public.len(), resp_signature.len());
 
     info!(peer = %hex::encode(&initiator_static[..8]), "Handshake completed (responder)");
     Ok((resp_msg, result))
