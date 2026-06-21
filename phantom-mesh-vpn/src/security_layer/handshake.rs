@@ -291,6 +291,10 @@ pub fn process_init_and_respond(
         is_post_quantum: true,
     };
 
+    debug!("Response message total size: {} bytes", resp_msg.len());
+    debug!("  Header: 2, ephem: 32, ct_len_field: 4, ct: {}, dil_len: 4, dil: {}, sig_len: 4, sig: {}",
+        ct_bytes.len(), identity.dilithium_public.len(), resp_signature.len());
+
     info!(peer = %hex::encode(&initiator_static[..8]), "Handshake completed (responder)");
     Ok((resp_msg, result))
 }
@@ -314,7 +318,10 @@ pub fn process_response(
     offset += 32;
 
     // Read Kyber ciphertext
+    debug!("process_response: reading ct_len at offset {}, msg_len={}", offset, resp_msg.len());
+    debug!("  bytes at offset: {:?}", &resp_msg[offset..offset+4]);
     let ct_len = u32::from_le_bytes(resp_msg[offset..offset + 4].try_into().unwrap()) as usize;
+    debug!("  ct_len = {}", ct_len);
     offset += 4;
     let kyber_ct_bytes = &resp_msg[offset..offset + ct_len];
     offset += ct_len;
