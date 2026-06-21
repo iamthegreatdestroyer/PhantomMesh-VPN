@@ -246,17 +246,14 @@ pub fn process_init_and_respond(
     let mut sorted_ephems = vec![initiator_ephem.to_vec(), resp_ephem_public.to_vec()];
     sorted_ephems.sort();
 
-    let ikm_hash_r = blake3::hash(&[&kyber_ss_bytes[..], &sorted_statics[0], &sorted_statics[1], &sorted_ephems[0], &sorted_ephems[1]].concat());
-    eprintln!("RESPONDER ikm_hash: {:?}", &ikm_hash_r.as_bytes()[..8]);
-    eprintln!("RESPONDER send_label: phantommesh-to-initiator-v1");
-    eprintln!("RESPONDER recv_label: phantommesh-to-responder-v1");
-
     let mut ikm = Vec::new();
     ikm.extend_from_slice(&kyber_ss_bytes);
     ikm.extend_from_slice(&sorted_statics[0]);
     ikm.extend_from_slice(&sorted_statics[1]);
     ikm.extend_from_slice(&sorted_ephems[0]);
     ikm.extend_from_slice(&sorted_ephems[1]);
+
+    eprintln!("RESPONDER ikm_len={} ikm_hash={}", ikm.len(), hex::encode(&blake3::hash(&ikm).as_bytes()[..8]));
 
     let send_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
     let recv_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
@@ -265,6 +262,7 @@ pub fn process_init_and_respond(
     let mut recv_key = [0u8; 32];
     send_key.copy_from_slice(&send_key_hash);
     recv_key.copy_from_slice(&recv_key_hash);
+    eprintln!("RESPONDER send={} recv={}", hex::encode(&send_key[..8]), hex::encode(&recv_key[..8]));
 
     // Sign the response
     let mut resp_sign_payload = Vec::new();
@@ -403,11 +401,6 @@ pub fn process_response(
     let mut sorted_statics = vec![identity.x25519_public.to_vec(), state.peer_static.to_vec()];
     sorted_statics.sort();
 
-    let ikm_hash_i = blake3::hash(&[&kyber_ss_bytes[..], &sorted_statics[0], &sorted_statics[1], &sorted_ephems[0], &sorted_ephems[1]].concat());
-    eprintln!("INITIATOR ikm_hash: {:?}", &ikm_hash_i.as_bytes()[..8]);
-    eprintln!("INITIATOR send = derive(to-responder), recv = derive(to-initiator)");
-    eprintln!("INITIATOR send_key: {:?}", blake3::derive_key("phantommesh-to-responder-v1", &[&kyber_ss_bytes[..], &sorted_statics[0], &sorted_statics[1], &sorted_ephems[0], &sorted_ephems[1]].concat())[..8]);
-
     let mut ikm = Vec::new();
     ikm.extend_from_slice(&kyber_ss_bytes);
     ikm.extend_from_slice(&sorted_statics[0]);
@@ -415,8 +408,16 @@ pub fn process_response(
     ikm.extend_from_slice(&sorted_ephems[0]);
     ikm.extend_from_slice(&sorted_ephems[1]);
 
+    eprintln!("INITIATOR ikm_len={} ikm_hash={}", ikm.len(), hex::encode(&blake3::hash(&ikm).as_bytes()[..8]));
+
     let send_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
     let recv_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
+
+    let mut send_key = [0u8; 32];
+    let mut recv_key = [0u8; 32];
+    send_key.copy_from_slice(&send_key_hash);
+    recv_key.copy_from_slice(&recv_key_hash);
+    eprintln!("INITIATOR send={} recv={}", hex::encode(&send_key[..8]), hex::encode(&recv_key[..8]));
 
     let mut send_key = [0u8; 32];
     let mut recv_key = [0u8; 32];
