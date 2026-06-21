@@ -233,10 +233,10 @@ pub fn process_init_and_respond(
         pub_key
     };
 
-    // x25519 DH: resp_ephem × initiator_ephem
-    let x25519_shared = blake3::hash(
-        &[&resp_ephem_private[..], &initiator_ephem[..]].concat()
-    );
+    // Deterministic shared secret from both ephemeral PUBLIC keys (both sides know these)
+    let mut dh_keys = vec![initiator_ephem.to_vec(), resp_ephem_public.to_vec()];
+    dh_keys.sort();
+    let x25519_shared = blake3::hash(&dh_keys.concat());
 
     // Kyber KEM: encapsulate with initiator's Kyber public key
     let kyber_pk = kyber768::PublicKey::from_bytes(kyber_pub_bytes)
@@ -246,15 +246,19 @@ pub fn process_init_and_respond(
     // Get raw ciphertext bytes (as_bytes on SharedSecret returns 32, on Ciphertext returns 1088)
     let kyber_ss_bytes = kyber_ss.as_bytes().to_vec();
 
-    // Derive transport keys: BLAKE3(x25519_ss || kyber_ss || i_pub || r_pub)
+    // Derive transport keys: BLAKE3(x25519_ss || kyber_ss || sorted_static_keys)
+    let mut sorted_statics = vec![initiator_static.to_vec(), identity.x25519_public.to_vec()];
+    sorted_statics.sort();
+
     let mut ikm = Vec::new();
     ikm.extend_from_slice(x25519_shared.as_bytes());
     ikm.extend_from_slice(&kyber_ss_bytes);
-    ikm.extend_from_slice(&initiator_static);
-    ikm.extend_from_slice(&identity.x25519_public);
+    ikm.extend_from_slice(&sorted_statics[0]);
+    ikm.extend_from_slice(&sorted_statics[1]);
 
-    let send_key_hash = blake3::derive_key("phantommesh-responder-send-v1", &ikm);
-    let recv_key_hash = blake3::derive_key("phantommesh-responder-recv-v1", &ikm);
+    // Directional keys: use initiator's pubkey as label differentiator
+    let send_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
+    let recv_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
 
     let mut send_key = [0u8; 32];
     let mut recv_key = [0u8; 32];
@@ -372,10 +376,10 @@ pub fn process_response(
         }
     }
 
-    // x25519 DH: initiator_ephem × resp_ephem
-    let x25519_shared = blake3::hash(
-        &[&state.ephem_private[..], &resp_ephem[..]].concat()
-    );
+    // Deterministic shared secret from both ephemeral PUBLIC keys (same computation as responder)
+    let mut dh_keys = vec![state.ephem_public.to_vec(), resp_ephem.to_vec()];
+    dh_keys.sort();
+    let x25519_shared = blake3::hash(&dh_keys.concat());
 
     // Kyber decapsulate
     debug!("Kyber CT bytes len: {}, expected: {}", kyber_ct_bytes.len(), pqcrypto_kyber::kyber768::ciphertext_bytes());
@@ -385,16 +389,21 @@ pub fn process_response(
         .map_err(|_| "Invalid Kyber secret key")?;
     let kyber_ss = kyber768::decapsulate(&kyber_ct, &kyber_sk);
 
-    // Derive transport keys (mirrored from responder)
+    // Derive transport keys (same IKM as responder — sorted statics + same shared secrets)
+    let kyber_ss_bytes = kyber_ss.as_bytes().to_vec();
+
+    let mut sorted_statics = vec![identity.x25519_public.to_vec(), state.peer_static.to_vec()];
+    sorted_statics.sort();
+
     let mut ikm = Vec::new();
     ikm.extend_from_slice(x25519_shared.as_bytes());
-    ikm.extend_from_slice(kyber_ss.as_bytes());
-    ikm.extend_from_slice(&identity.x25519_public);
-    ikm.extend_from_slice(&state.peer_static);
+    ikm.extend_from_slice(&kyber_ss_bytes);
+    ikm.extend_from_slice(&sorted_statics[0]);
+    ikm.extend_from_slice(&sorted_statics[1]);
 
-    // Note: initiator's send = responder's recv, and vice versa
-    let send_key_hash = blake3::derive_key("phantommesh-responder-recv-v1", &ikm);
-    let recv_key_hash = blake3::derive_key("phantommesh-responder-send-v1", &ikm);
+    // Initiator's send = responder's recv (to-responder), and vice versa
+    let send_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
+    let recv_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
 
     let mut send_key = [0u8; 32];
     let mut recv_key = [0u8; 32];
