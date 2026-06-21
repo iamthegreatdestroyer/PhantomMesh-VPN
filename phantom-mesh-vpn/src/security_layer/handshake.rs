@@ -246,6 +246,10 @@ pub fn process_init_and_respond(
     let mut sorted_ephems = vec![initiator_ephem.to_vec(), resp_ephem_public.to_vec()];
     sorted_ephems.sort();
 
+    eprintln!("RESPONDER kyber_ss: {:?}", &kyber_ss_bytes[..8]);
+    eprintln!("RESPONDER sorted_statics: {:?} {:?}", &sorted_statics[0][..4], &sorted_statics[1][..4]);
+    eprintln!("RESPONDER sorted_ephems: {:?} {:?}", &sorted_ephems[0][..4], &sorted_ephems[1][..4]);
+
     let mut ikm = Vec::new();
     ikm.extend_from_slice(&kyber_ss_bytes);
     ikm.extend_from_slice(&sorted_statics[0]);
@@ -253,7 +257,6 @@ pub fn process_init_and_respond(
     ikm.extend_from_slice(&sorted_ephems[0]);
     ikm.extend_from_slice(&sorted_ephems[1]);
 
-    // Directional keys: use initiator's pubkey as label differentiator
     let send_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
     let recv_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
 
@@ -399,6 +402,10 @@ pub fn process_response(
     let mut sorted_statics = vec![identity.x25519_public.to_vec(), state.peer_static.to_vec()];
     sorted_statics.sort();
 
+    eprintln!("INITIATOR kyber_ss: {:?}", &kyber_ss_bytes[..8]);
+    eprintln!("INITIATOR sorted_statics: {:?} {:?}", &sorted_statics[0][..4], &sorted_statics[1][..4]);
+    eprintln!("INITIATOR sorted_ephems: {:?} {:?}", &sorted_ephems[0][..4], &sorted_ephems[1][..4]);
+
     let mut ikm = Vec::new();
     ikm.extend_from_slice(&kyber_ss_bytes);
     ikm.extend_from_slice(&sorted_statics[0]);
@@ -406,7 +413,6 @@ pub fn process_response(
     ikm.extend_from_slice(&sorted_ephems[0]);
     ikm.extend_from_slice(&sorted_ephems[1]);
 
-    // Initiator's send = responder's recv (to-responder), and vice versa
     let send_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
     let recv_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
 
