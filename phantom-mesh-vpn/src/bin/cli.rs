@@ -90,7 +90,7 @@ async fn cmd_status(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn setup_kill_switch(tun_name: &str, listen_port: u16) -> Result<(), Box<dyn std::error::Error>> {
+fn setup_kill_switch(tun_name: &str, listen_port: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(target_os = "linux")]
     {
         info!("Setting up kill switch via iptables");
@@ -114,7 +114,7 @@ fn setup_kill_switch(tun_name: &str, listen_port: u16) -> Result<(), Box<dyn std
     Ok(())
 }
 
-fn teardown_kill_switch() -> Result<(), Box<dyn std::error::Error>> {
+fn teardown_kill_switch() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(target_os = "linux")]
     {
         info!("Removing kill switch rules");
@@ -124,7 +124,7 @@ fn teardown_kill_switch() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn setup_tun_address(tun_name: &str, address: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn setup_tun_address(tun_name: &str, address: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(target_os = "linux")]
     {
         run_cmd("ip", &["addr", "add", address, "dev", tun_name])?;
@@ -134,7 +134,7 @@ fn setup_tun_address(tun_name: &str, address: &str) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn setup_dns(dns_servers: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+fn setup_dns(dns_servers: &[String]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(target_os = "linux")]
     {
         let mut content = String::new();
@@ -149,7 +149,7 @@ fn setup_dns(dns_servers: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn restore_dns() -> Result<(), Box<dyn std::error::Error>> {
+fn restore_dns() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(target_os = "linux")]
     {
         if let Ok(backup) = std::fs::read_to_string("/etc/resolv.conf.phantommesh.bak") {
@@ -161,7 +161,7 @@ fn restore_dns() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn run_cmd(cmd: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+fn run_cmd(cmd: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let output = Command::new(cmd).args(args).output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
