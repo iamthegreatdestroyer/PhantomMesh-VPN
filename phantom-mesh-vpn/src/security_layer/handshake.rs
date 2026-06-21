@@ -356,8 +356,9 @@ pub fn process_response(
     );
 
     // Kyber decapsulate
+    debug!("Kyber CT bytes len: {}, expected: {}", kyber_ct_bytes.len(), pqcrypto_kyber::kyber768::ciphertext_bytes());
     let kyber_ct = kyber768::Ciphertext::from_bytes(kyber_ct_bytes)
-        .map_err(|_| "Invalid Kyber ciphertext")?;
+        .map_err(|e| format!("Invalid Kyber ciphertext (len {}): {:?}", kyber_ct_bytes.len(), e))?;
     let kyber_sk = kyber768::SecretKey::from_bytes(&state.kyber_secret)
         .map_err(|_| "Invalid Kyber secret key")?;
     let kyber_ss = kyber768::decapsulate(&kyber_ct, &kyber_sk);
@@ -428,12 +429,12 @@ mod tests {
         assert!(resp_result.is_post_quantum);
         assert_eq!(resp_result.peer_identity, initiator.x25519_public);
 
-        // Step 3: Initiator processes RESP
+        // Step 3: Initiator processes RESP (pass identity for Kyber decapsulation)
         let init_result = process_response(
             &initiator,
             &init_state,
             &resp_msg,
-        ).unwrap();
+        ).expect("Initiator should process response successfully");
 
         assert!(init_result.is_post_quantum);
         assert_eq!(init_result.peer_identity, responder.x25519_public);
