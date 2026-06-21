@@ -6,5 +6,6 @@
 
 // Re-export submodules
 pub mod api_gateway;
+pub mod config;
 pub mod routing_manager;
 pub mod tunnel_engine;
