@@ -258,57 +258,9 @@ impl TunnelEngine {
         Ok(packet)
     }
 
-    /// Decrypt a received packet
-    async fn decrypt_packet(
-        &self,
-        packet: &[u8],
-    ) -> Result<(Vec<u8>, [u8; 32]), Box<dyn std::error::Error + Send + Sync>> {
-        if packet.len() < HEADER_SIZE + TAG_SIZE {
-            return Err("Packet too short".into());
-        }
-
-        let packet_type = packet[0];
-        if packet_type != PACKET_DATA && packet_type != PACKET_KEEPALIVE {
-            return Err(format!("Unknown packet type: {}", packet_type).into());
-        }
-
-        let session_id = u32::from_le_bytes(packet[1..5].try_into().unwrap());
-        let nonce_counter = u64::from_le_bytes(packet[5..13].try_into().unwrap());
-        let ciphertext = &packet[HEADER_SIZE..];
-
-        // Look up peer by session ID
-        let peer_key = {
-            let session_map = self.session_map.read().await;
-            *session_map.get(&session_id).ok_or("Unknown session")?
-        };
-
-        let peers = self.peers.read().await;
-        let peer = peers.get(&peer_key).ok_or("Peer not found")?;
-
-        // Anti-replay check
-        {
-            let mut replay = peer.recv_bitmap.lock().await;
-            if !replay.check_and_update(nonce_counter) {
-                return Err("Replay detected or nonce too old".into());
-            }
-        }
-
-        // Build nonce
-        let mut nonce = [0u8; NONCE_SIZE];
-        nonce[4..12].copy_from_slice(&nonce_counter.to_le_bytes());
-
-        // Decrypt
-        let plaintext = self.crypto.decrypt_chacha(ciphertext, &peer.recv_key, &nonce)?;
-
-        // Update stats
-        peer.bytes_received.fetch_add(packet.len() as u64, Ordering::Relaxed);
-
-        Ok((plaintext, peer_key))
-    }
-
     /// Start the tunnel on a given listen address
     ///
-    /// This spawns two tasks:
+    /// Spawns two tasks:
     /// 1. UDP listener: receives encrypted packets, decrypts, writes to TUN
     /// 2. TUN reader: reads IP packets from TUN, encrypts, sends to peer UDP endpoint
     pub async fn start(
@@ -329,121 +281,101 @@ impl TunnelEngine {
         let tun = Arc::new(tun);
         info!(name = tun_name, "TUN device created");
 
-        // Spawn UDP → TUN task (receive encrypted, decrypt, write to TUN)
-        let running = self.running.clone();
-        let stats = self.stats.clone();
-        let peers = self.peers.clone();
-        let session_map = self.session_map.clone();
-        let crypto = self.crypto.clone();
-        let event_tx = self.event_tx.clone();
-        let tun_writer = tun.clone();
-        let local_pk = self.local_private_key;
+        // Clone socket for both tasks
+        let recv_socket = socket.clone();
+        let send_socket = socket.clone();
 
-        let engine_decrypt = TunnelEngine {
-            crypto: crypto.clone(),
-            event_tx: event_tx.clone(),
-            peers: peers.clone(),
-            session_map: session_map.clone(),
-            stats: stats.clone(),
-            running: running.clone(),
-            local_private_key: local_pk,
-            local_public_key: self.local_public_key,
-        };
+        // === Task 1: UDP → TUN (receive encrypted, decrypt, write to TUN) ===
+        let running1 = self.running.clone();
+        let stats1 = self.stats.clone();
+        let peers1 = self.peers.clone();
+        let session_map1 = self.session_map.clone();
+        let crypto1 = self.crypto.clone();
+        let event_tx1 = self.event_tx.clone();
+        let tun1 = tun.clone();
+        let pk1 = self.local_private_key;
+        let pubk1 = self.local_public_key;
 
         tokio::spawn(async move {
+            let decryptor = DecryptHelper {
+                crypto: crypto1, peers: peers1, session_map: session_map1,
+            };
             let mut buf = vec![0u8; MAX_PACKET_SIZE];
-            while running.load(Ordering::SeqCst) {
-                match socket.recv_from(&mut buf).await {
+            while running1.load(Ordering::SeqCst) {
+                match recv_socket.recv_from(&mut buf).await {
                     Ok((len, _addr)) => {
-                        let packet = &buf[..len];
-                        match engine_decrypt.decrypt_packet(packet).await {
+                        match decryptor.decrypt(&buf[..len]).await {
                             Ok((plaintext, _peer_key)) => {
-                                // Write decrypted IP packet to TUN device
                                 #[cfg(target_os = "linux")]
                                 {
                                     use std::io::Write;
-                                    if let Err(e) = (&*tun_writer).write_all(&plaintext) {
+                                    if let Err(e) = (&*tun1).write_all(&plaintext) {
                                         error!("TUN write error: {}", e);
                                     }
                                 }
-
-                                let mut s = stats.lock().await;
+                                let mut s = stats1.lock().await;
                                 s.packets_received += 1;
                                 s.bytes_received += len as u64;
                             }
-                            Err(e) => {
-                                debug!("Packet decrypt failed: {}", e);
-                            }
+                            Err(e) => { debug!("Decrypt failed: {}", e); }
                         }
                     }
                     Err(e) => {
-                        if running.load(Ordering::SeqCst) {
-                            error!("UDP recv error: {}", e);
-                        }
+                        if running1.load(Ordering::SeqCst) { error!("UDP recv: {}", e); }
                         break;
                     }
                 }
             }
         });
 
-        // Spawn TUN → UDP task (read from TUN, encrypt, send to peer)
+        // === Task 2: TUN → UDP (read from TUN, encrypt, send to peer) ===
         let running2 = self.running.clone();
         let stats2 = self.stats.clone();
         let peers2 = self.peers.clone();
         let crypto2 = self.crypto.clone();
-        let socket2 = socket.clone();
-        let local_pk2 = self.local_private_key;
-        let local_pubk2 = self.local_public_key;
-        let event_tx2 = self.event_tx.clone();
-        let session_map2 = self.session_map.clone();
-
-        let engine_encrypt = TunnelEngine {
-            crypto: crypto2,
-            event_tx: event_tx2,
-            peers: peers2.clone(),
-            session_map: session_map2,
-            stats: stats2.clone(),
-            running: running2.clone(),
-            local_private_key: local_pk2,
-            local_public_key: local_pubk2,
-        };
+        let tun2 = tun.clone();
 
         tokio::spawn(async move {
             let mut buf = vec![0u8; MAX_PACKET_SIZE];
-            while running2.load(Ordering::SeqCst) {
+            loop {
+                if !running2.load(Ordering::SeqCst) { break; }
+
                 #[cfg(target_os = "linux")]
                 {
                     use std::io::Read;
-                    match (&*tun).read(&mut buf) {
+                    match (&*tun2).read(&mut buf) {
                         Ok(len) => {
                             let ip_packet = &buf[..len];
-                            // Determine which peer to send to based on destination IP
                             let peers = peers2.read().await;
                             for (_pk, peer) in peers.iter() {
                                 if let Some(endpoint) = peer.config.endpoint {
-                                    if peer.handshake_complete.load(Ordering::SeqCst) {
-                                        match engine_encrypt.encrypt_packet(ip_packet, peer) {
-                                            Ok(encrypted) => {
-                                                if let Err(e) = socket2.send_to(&encrypted, endpoint).await {
-                                                    error!("UDP send error: {}", e);
-                                                }
-                                                peer.bytes_sent.fetch_add(encrypted.len() as u64, Ordering::Relaxed);
-                                                let mut s = stats2.lock().await;
-                                                s.packets_sent += 1;
-                                                s.bytes_sent += encrypted.len() as u64;
+                                    let nonce_counter = peer.send_nonce.fetch_add(1, Ordering::SeqCst);
+                                    let mut nonce = [0u8; NONCE_SIZE];
+                                    nonce[4..12].copy_from_slice(&nonce_counter.to_le_bytes());
+
+                                    match crypto2.encrypt_chacha(ip_packet, &peer.send_key, &nonce) {
+                                        Ok(ciphertext) => {
+                                            let mut pkt = Vec::with_capacity(HEADER_SIZE + ciphertext.len());
+                                            pkt.push(PACKET_DATA);
+                                            pkt.extend_from_slice(&peer.session_id.to_le_bytes());
+                                            pkt.extend_from_slice(&nonce_counter.to_le_bytes());
+                                            pkt.extend_from_slice(&ciphertext);
+
+                                            if let Err(e) = send_socket.send_to(&pkt, endpoint).await {
+                                                error!("UDP send: {}", e);
                                             }
-                                            Err(e) => {
-                                                error!("Encrypt error: {}", e);
-                                            }
+                                            peer.bytes_sent.fetch_add(pkt.len() as u64, Ordering::Relaxed);
+                                            let mut s = stats2.lock().await;
+                                            s.packets_sent += 1;
+                                            s.bytes_sent += pkt.len() as u64;
                                         }
+                                        Err(e) => { error!("Encrypt: {}", e); }
                                     }
                                 }
                             }
                         }
                         Err(e) => {
-                            if running2.load(Ordering::SeqCst) {
-                                error!("TUN read error: {}", e);
-                            }
+                            if running2.load(Ordering::SeqCst) { error!("TUN read: {}", e); }
                             break;
                         }
                     }
@@ -451,15 +383,14 @@ impl TunnelEngine {
 
                 #[cfg(not(target_os = "linux"))]
                 {
-                    // Non-Linux: sleep to prevent busy loop
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    warn!("TUN device not supported on this platform");
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    warn!("TUN not supported on this platform");
                     break;
                 }
             }
         });
 
-        info!("Tunnel engine started: UDP {} → TUN {}", listen_addr, tun_name);
+        info!("Tunnel started: UDP {} <-> TUN {}", listen_addr, tun_name);
         Ok(())
     }
 
@@ -516,6 +447,48 @@ impl TunnelEngine {
     #[cfg(not(target_os = "linux"))]
     fn create_tun_device(_name: &str) -> Result<std::fs::File, Box<dyn std::error::Error + Send + Sync>> {
         Err("TUN device only supported on Linux".into())
+    }
+}
+
+// ============================================================================
+// Decrypt Helper (Send-safe for tokio::spawn)
+// ============================================================================
+
+struct DecryptHelper {
+    crypto: Arc<CryptoManager>,
+    peers: Arc<RwLock<HashMap<[u8; 32], Arc<PeerState>>>>,
+    session_map: Arc<RwLock<HashMap<u32, [u8; 32]>>>,
+}
+
+impl DecryptHelper {
+    async fn decrypt(&self, packet: &[u8]) -> Result<(Vec<u8>, [u8; 32]), Box<dyn std::error::Error + Send + Sync>> {
+        if packet.len() < HEADER_SIZE + TAG_SIZE {
+            return Err("Packet too short".into());
+        }
+        let session_id = u32::from_le_bytes(packet[1..5].try_into().unwrap());
+        let nonce_counter = u64::from_le_bytes(packet[5..13].try_into().unwrap());
+        let ciphertext = &packet[HEADER_SIZE..];
+
+        let peer_key = {
+            let sm = self.session_map.read().await;
+            *sm.get(&session_id).ok_or("Unknown session")?
+        };
+        let peers = self.peers.read().await;
+        let peer = peers.get(&peer_key).ok_or("Peer not found")?;
+
+        {
+            let mut replay = peer.recv_bitmap.lock().await;
+            if !replay.check_and_update(nonce_counter) {
+                return Err("Replay detected".into());
+            }
+        }
+
+        let mut nonce = [0u8; NONCE_SIZE];
+        nonce[4..12].copy_from_slice(&nonce_counter.to_le_bytes());
+        let plaintext = self.crypto.decrypt_chacha(ciphertext, &peer.recv_key, &nonce)?;
+        peer.bytes_received.fetch_add(packet.len() as u64, Ordering::Relaxed);
+
+        Ok((plaintext, peer_key))
     }
 }
 
