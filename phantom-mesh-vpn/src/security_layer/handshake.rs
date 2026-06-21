@@ -318,10 +318,10 @@ pub fn process_response(
     offset += 32;
 
     // Read Kyber ciphertext
-    debug!("process_response: reading ct_len at offset {}, msg_len={}", offset, resp_msg.len());
-    debug!("  bytes at offset: {:?}", &resp_msg[offset..offset+4]);
+    eprintln!("process_response: reading ct_len at offset {}, msg_len={}", offset, resp_msg.len());
+    eprintln!("  bytes at offset: {:02x} {:02x} {:02x} {:02x}", resp_msg[offset], resp_msg[offset+1], resp_msg[offset+2], resp_msg[offset+3]);
     let ct_len = u32::from_le_bytes(resp_msg[offset..offset + 4].try_into().unwrap()) as usize;
-    debug!("  ct_len = {}", ct_len);
+    eprintln!("  ct_len = {}", ct_len);
     offset += 4;
     let kyber_ct_bytes = &resp_msg[offset..offset + ct_len];
     offset += ct_len;
