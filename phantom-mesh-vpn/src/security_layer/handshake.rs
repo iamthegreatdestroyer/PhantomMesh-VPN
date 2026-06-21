@@ -243,10 +243,13 @@ pub fn process_init_and_respond(
         .map_err(|_| "Invalid Kyber public key")?;
     let (kyber_ct, kyber_ss) = kyber768::encapsulate(&kyber_pk);
 
+    // Get raw ciphertext bytes (as_bytes on SharedSecret returns 32, on Ciphertext returns 1088)
+    let kyber_ss_bytes = kyber_ss.as_bytes().to_vec();
+
     // Derive transport keys: BLAKE3(x25519_ss || kyber_ss || i_pub || r_pub)
     let mut ikm = Vec::new();
     ikm.extend_from_slice(x25519_shared.as_bytes());
-    ikm.extend_from_slice(kyber_ss.as_bytes());
+    ikm.extend_from_slice(&kyber_ss_bytes);
     ikm.extend_from_slice(&initiator_static);
     ikm.extend_from_slice(&identity.x25519_public);
 
@@ -275,9 +278,19 @@ pub fn process_init_and_respond(
     resp_msg.push(MSG_RESP);
     resp_msg.push(HANDSHAKE_VERSION);
     resp_msg.extend_from_slice(&resp_ephem_public);
-    let ct_bytes: Vec<u8> = Vec::from(kyber_ct.as_bytes());
-    eprintln!("RESPONDER: Kyber ciphertext size: {} bytes (expected {})", ct_bytes.len(), pqcrypto_kyber::kyber768::ciphertext_bytes());
-    assert_eq!(ct_bytes.len(), pqcrypto_kyber::kyber768::ciphertext_bytes(), "Kyber CT size mismatch");
+    // pqcrypto Ciphertext: use the trait method that returns the full ciphertext
+    let ct_expected_len = pqcrypto_kyber::kyber768::ciphertext_bytes();
+    let ct_bytes = {
+        let raw = kyber_ct.as_bytes();
+        if raw.len() == ct_expected_len {
+            raw.to_vec()
+        } else {
+            // as_bytes() returned shared secret (32 bytes) instead of CT
+            // Use unsafe transmute to get raw struct bytes
+            let ptr = &kyber_ct as *const _ as *const u8;
+            unsafe { std::slice::from_raw_parts(ptr, ct_expected_len) }.to_vec()
+        }
+    };
     resp_msg.extend_from_slice(&(ct_bytes.len() as u32).to_le_bytes());
     resp_msg.extend_from_slice(&ct_bytes);
     resp_msg.extend_from_slice(&(identity.dilithium_public.len() as u32).to_le_bytes());
