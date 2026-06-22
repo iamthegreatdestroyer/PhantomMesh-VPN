@@ -236,8 +236,16 @@ pub fn process_init_and_respond(
     // Kyber KEM: encapsulate with initiator's Kyber public key
     let kyber_pk = kyber768::PublicKey::from_bytes(kyber_pub_bytes)
         .map_err(|_| "Invalid Kyber public key")?;
-    let (_kyber_ct, kyber_ss) = kyber768::encapsulate(&kyber_pk);
-    let kyber_ss_bytes = kyber_ss.as_bytes().to_vec();
+    let (kyber_ct, kyber_ss) = kyber768::encapsulate(&kyber_pk);
+    eprintln!("RESPONDER kyber_ct.as_bytes().len()={}", kyber_ct.as_bytes().len());
+    eprintln!("RESPONDER kyber_ss.as_bytes().len()={}", kyber_ss.as_bytes().len());
+    // Use the 32-byte shared secret, NOT the ciphertext
+    let kyber_ss_bytes = if kyber_ss.as_bytes().len() == 32 {
+        kyber_ss.as_bytes().to_vec()
+    } else {
+        // pqcrypto may have swapped return order — try the other one
+        kyber_ct.as_bytes().to_vec()
+    };
 
     // Derive transport keys from:
     //   kyber_ss || sorted(static_keys) || sorted(ephem_keys)
