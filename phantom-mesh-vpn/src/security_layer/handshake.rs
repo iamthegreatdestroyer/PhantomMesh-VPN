@@ -236,15 +236,13 @@ pub fn process_init_and_respond(
     // Kyber KEM: encapsulate with initiator's Kyber public key
     let kyber_pk = kyber768::PublicKey::from_bytes(kyber_pub_bytes)
         .map_err(|_| "Invalid Kyber public key")?;
-    let (kyber_ct, kyber_ss) = kyber768::encapsulate(&kyber_pk);
-    eprintln!("RESPONDER kyber_ct.as_bytes().len()={}", kyber_ct.as_bytes().len());
-    eprintln!("RESPONDER kyber_ss.as_bytes().len()={}", kyber_ss.as_bytes().len());
-    // Use the 32-byte shared secret, NOT the ciphertext
-    let kyber_ss_bytes = if kyber_ss.as_bytes().len() == 32 {
-        kyber_ss.as_bytes().to_vec()
+    // pqcrypto::kyber768::encapsulate returns (SharedSecret, Ciphertext) — NOT (CT, SS)
+    let (kyber_ret_a, _kyber_ret_b) = kyber768::encapsulate(&kyber_pk);
+    let kyber_ss_bytes = if kyber_ret_a.as_bytes().len() == 32 {
+        kyber_ret_a.as_bytes().to_vec()
     } else {
-        // pqcrypto may have swapped return order — try the other one
-        kyber_ct.as_bytes().to_vec()
+        // Swapped order in some pqcrypto versions
+        _kyber_ret_b.as_bytes().to_vec()
     };
 
     // Derive transport keys from:
@@ -261,7 +259,7 @@ pub fn process_init_and_respond(
     ikm.extend_from_slice(&sorted_ephems[0]);
     ikm.extend_from_slice(&sorted_ephems[1]);
 
-    eprintln!("RESPONDER ikm_len={} ikm_hash={}", ikm.len(), hex::encode(&blake3::hash(&ikm).as_bytes()[..8]));
+
 
     let send_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
     let recv_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
@@ -270,7 +268,7 @@ pub fn process_init_and_respond(
     let mut recv_key = [0u8; 32];
     send_key.copy_from_slice(&send_key_hash);
     recv_key.copy_from_slice(&recv_key_hash);
-    eprintln!("RESPONDER send={} recv={}", hex::encode(&send_key[..8]), hex::encode(&recv_key[..8]));
+
 
     // Sign the response
     let mut resp_sign_payload = Vec::new();
@@ -416,7 +414,7 @@ pub fn process_response(
     ikm.extend_from_slice(&sorted_ephems[0]);
     ikm.extend_from_slice(&sorted_ephems[1]);
 
-    eprintln!("INITIATOR ikm_len={} ikm_hash={}", ikm.len(), hex::encode(&blake3::hash(&ikm).as_bytes()[..8]));
+
 
     let send_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
     let recv_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
@@ -425,7 +423,7 @@ pub fn process_response(
     let mut recv_key = [0u8; 32];
     send_key.copy_from_slice(&send_key_hash);
     recv_key.copy_from_slice(&recv_key_hash);
-    eprintln!("INITIATOR send={} recv={}", hex::encode(&send_key[..8]), hex::encode(&recv_key[..8]));
+
 
     let mut send_key = [0u8; 32];
     let mut recv_key = [0u8; 32];
