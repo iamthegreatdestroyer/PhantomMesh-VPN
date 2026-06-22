@@ -13,7 +13,7 @@ use std::io::{self, Read};
 use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{info, error};
+use tracing::info;
 
 use phantom_mesh::security_layer::crypto_manager::CryptoManager;
 use phantom_mesh::vpn_core::config::Config;
@@ -67,7 +67,7 @@ fn cmd_version() {
 }
 
 async fn cmd_status(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let api_url = format!("http://127.0.0.1:8080/health");
+    let api_url = "http://127.0.0.1:8080/health".to_string();
     match reqwest::get(&api_url).await {
         Ok(resp) => {
             if resp.status().is_success() {
@@ -311,7 +311,7 @@ async fn main() {
         "down" => {
             #[cfg(target_os = "linux")]
             {
-                let _ = Command::new("pkill").args(&["-SIGTERM", "phantommesh"]).output();
+                let _ = Command::new("pkill").args(["-SIGTERM", "phantommesh"]).output();
                 println!("Sent shutdown signal to PhantomMesh daemon");
             }
             #[cfg(not(target_os = "linux"))]

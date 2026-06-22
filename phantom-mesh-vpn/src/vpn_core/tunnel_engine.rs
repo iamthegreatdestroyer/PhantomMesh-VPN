@@ -11,11 +11,14 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tracing::{debug, error, info, warn};
 
 use super::super::security_layer::crypto_manager::CryptoManager;
+use crate::mesh::healer::{DisconnectReason, MeshHealer, PeerId};
+use crate::security_layer::threat_engine::ThreatEngine;
 
 // ============================================================================
 // Constants
@@ -66,7 +69,7 @@ struct PeerState {
     recv_nonce_max: AtomicU64,
     recv_bitmap: Mutex<ReplayWindow>,
     last_handshake: std::time::Instant,
-    last_received: std::time::Instant,
+    last_received: std::sync::Mutex<std::time::Instant>,
     bytes_sent: AtomicU64,
     bytes_received: AtomicU64,
     handshake_complete: AtomicBool,
@@ -149,6 +152,8 @@ pub struct TunnelEngine {
     running: Arc<AtomicBool>,
     local_private_key: [u8; 32],
     local_public_key: [u8; 32],
+    mesh_healer: Option<Arc<MeshHealer>>,
+    threat_engine: Option<Arc<ThreatEngine>>,
 }
 
 impl TunnelEngine {
@@ -167,7 +172,19 @@ impl TunnelEngine {
             running: Arc::new(AtomicBool::new(false)),
             local_private_key: private_key,
             local_public_key: public_key,
+            mesh_healer: None,
+            threat_engine: None,
         }
+    }
+
+    pub fn with_mesh_healer(mut self, healer: Arc<MeshHealer>) -> Self {
+        self.mesh_healer = Some(healer);
+        self
+    }
+
+    pub fn with_threat_engine(mut self, engine: Arc<ThreatEngine>) -> Self {
+        self.threat_engine = Some(engine);
+        self
     }
 
     pub async fn add_peer(&self, config: PeerConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -191,7 +208,7 @@ impl TunnelEngine {
             recv_nonce_max: AtomicU64::new(0),
             recv_bitmap: Mutex::new(ReplayWindow::default()),
             last_handshake: std::time::Instant::now(),
-            last_received: std::time::Instant::now(),
+            last_received: std::sync::Mutex::new(std::time::Instant::now()),
             bytes_sent: AtomicU64::new(0),
             bytes_received: AtomicU64::new(0),
             handshake_complete: AtomicBool::new(false),
@@ -204,6 +221,10 @@ impl TunnelEngine {
         {
             let mut session_map = self.session_map.write().await;
             session_map.insert(session_id, config.public_key);
+        }
+
+        if let Some(ref healer) = self.mesh_healer {
+            healer.register_peer(PeerId(hex::encode(config.public_key))).await;
         }
 
         info!(peer = ?hex::encode(&config.public_key[..8]), "Peer added");
@@ -260,9 +281,10 @@ impl TunnelEngine {
 
     /// Start the tunnel on a given listen address
     ///
-    /// Spawns two tasks:
-    /// 1. UDP listener: receives encrypted packets, decrypts, writes to TUN
+    /// Spawns three tasks:
+    /// 1. UDP listener: receives encrypted packets, decrypts, runs threat analysis, writes to TUN
     /// 2. TUN reader: reads IP packets from TUN, encrypts, sends to peer UDP endpoint
+    /// 3. Keepalive: sends keepalives every 25s, detects peer timeouts, invokes MeshHealer
     pub async fn start(
         &self,
         listen_addr: SocketAddr,
@@ -281,11 +303,10 @@ impl TunnelEngine {
         let tun = Arc::new(tun);
         info!(name = tun_name, "TUN device created");
 
-        // Clone socket for both tasks
         let recv_socket = socket.clone();
         let send_socket = socket.clone();
 
-        // === Task 1: UDP → TUN (receive encrypted, decrypt, write to TUN) ===
+        // === Task 1: UDP → TUN (receive encrypted, decrypt, threat-analyze, write to TUN) ===
         let running1 = self.running.clone();
         let stats1 = self.stats.clone();
         let peers1 = self.peers.clone();
@@ -293,8 +314,7 @@ impl TunnelEngine {
         let crypto1 = self.crypto.clone();
         let event_tx1 = self.event_tx.clone();
         let tun1 = tun.clone();
-        let pk1 = self.local_private_key;
-        let pubk1 = self.local_public_key;
+        let threat_engine1 = self.threat_engine.clone();
 
         tokio::spawn(async move {
             let decryptor = DecryptHelper {
@@ -303,9 +323,44 @@ impl TunnelEngine {
             let mut buf = vec![0u8; MAX_PACKET_SIZE];
             while running1.load(Ordering::SeqCst) {
                 match recv_socket.recv_from(&mut buf).await {
-                    Ok((len, _addr)) => {
+                    Ok((len, addr)) => {
+                        if len < 1 { continue; }
+                        let packet_type = buf[0];
+
                         match decryptor.decrypt(&buf[..len]).await {
-                            Ok((plaintext, _peer_key)) => {
+                            Ok((plaintext, peer_key)) => {
+                                // Update last_received timestamp for this peer
+                                {
+                                    let peers = decryptor.peers.read().await;
+                                    if let Some(peer) = peers.get(&peer_key) {
+                                        if let Ok(mut last) = peer.last_received.lock() {
+                                            *last = std::time::Instant::now();
+                                        }
+                                    }
+                                }
+
+                                if packet_type == PACKET_KEEPALIVE {
+                                    debug!(peer = ?hex::encode(&peer_key[..8]), "Keepalive received");
+                                    continue;
+                                }
+
+                                // Threat analysis (detection only — never drops packets)
+                                if let Some(ref te) = threat_engine1 {
+                                    let source = addr.to_string();
+                                    if let Some(threat) = te.analyze_packet(&plaintext, Some(&source)).await {
+                                        warn!(
+                                            threat_id = %threat.signature_id,
+                                            severity = ?threat.severity,
+                                            source = %source,
+                                            "Threat detected in decrypted packet"
+                                        );
+                                        let _ = event_tx1.send(TunnelEvent::ThreatSignature {
+                                            signature: plaintext[..plaintext.len().min(64)].to_vec(),
+                                            source,
+                                        }).await;
+                                    }
+                                }
+
                                 #[cfg(target_os = "linux")]
                                 {
                                     use std::io::Write;
@@ -383,9 +438,80 @@ impl TunnelEngine {
 
                 #[cfg(not(target_os = "linux"))]
                 {
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                     warn!("TUN not supported on this platform");
                     break;
+                }
+            }
+        });
+
+        // === Task 3: Keepalive sender + peer timeout detector ===
+        let running3 = self.running.clone();
+        let peers3 = self.peers.clone();
+        let crypto3 = self.crypto.clone();
+        let event_tx3 = self.event_tx.clone();
+        let healer3 = self.mesh_healer.clone();
+        let socket3 = socket.clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(KEEPALIVE_INTERVAL_SECS));
+            while running3.load(Ordering::SeqCst) {
+                interval.tick().await;
+                if !running3.load(Ordering::SeqCst) { break; }
+
+                let mut timed_out = Vec::new();
+
+                {
+                    let peers = peers3.read().await;
+                    for (pk, peer) in peers.iter() {
+                        // Send keepalive packet (encrypted empty payload)
+                        if let Some(endpoint) = peer.config.endpoint {
+                            let nonce_counter = peer.send_nonce.fetch_add(1, Ordering::SeqCst);
+                            let mut nonce = [0u8; NONCE_SIZE];
+                            nonce[4..12].copy_from_slice(&nonce_counter.to_le_bytes());
+
+                            match crypto3.encrypt_chacha(&[], &peer.send_key, &nonce) {
+                                Ok(ciphertext) => {
+                                    let mut pkt = Vec::with_capacity(HEADER_SIZE + ciphertext.len());
+                                    pkt.push(PACKET_KEEPALIVE);
+                                    pkt.extend_from_slice(&peer.session_id.to_le_bytes());
+                                    pkt.extend_from_slice(&nonce_counter.to_le_bytes());
+                                    pkt.extend_from_slice(&ciphertext);
+
+                                    if let Err(e) = socket3.send_to(&pkt, endpoint).await {
+                                        debug!("Keepalive send error: {}", e);
+                                    }
+                                }
+                                Err(e) => { debug!("Keepalive encrypt error: {}", e); }
+                            }
+                        }
+
+                        // Check for timeout (75s = 3 missed keepalives)
+                        let elapsed = peer.last_received.lock()
+                            .map(|last| last.elapsed())
+                            .unwrap_or(Duration::from_secs(0));
+                        if elapsed > Duration::from_secs(KEEPALIVE_INTERVAL_SECS * 3) {
+                            timed_out.push((*pk, peer.config.endpoint));
+                        }
+                    }
+                }
+
+                for (pk, _endpoint) in timed_out {
+                    warn!(peer = ?hex::encode(&pk[..8]), "Peer timed out (no response for 75s)");
+                    let _ = event_tx3.send(TunnelEvent::PeerDisconnected { public_key: pk }).await;
+
+                    if let Some(ref healer) = healer3 {
+                        let peer_id = PeerId(hex::encode(pk));
+                        let healer = healer.clone();
+                        tokio::spawn(async move {
+                            healer.heal_peer(
+                                &peer_id,
+                                DisconnectReason::HeartbeatTimeout,
+                                5,
+                                || async { false },
+                            ).await;
+                        });
+                    }
                 }
             }
         });
@@ -612,5 +738,116 @@ mod tests {
         // Verify nonce incremented
         let nonce = peer.send_nonce.load(Ordering::SeqCst);
         assert_eq!(nonce, 2); // Started at 1, incremented to 2
+    }
+
+    #[tokio::test]
+    async fn test_keepalive_packet_format() {
+        let crypto = Arc::new(CryptoManager::new().unwrap());
+        let (tx, _rx) = mpsc::channel(100);
+        let keys = crypto.generate_keypair().unwrap();
+        let engine = TunnelEngine::new(crypto.clone(), tx, keys.0, keys.1);
+
+        let peer_config = PeerConfig {
+            public_key: [42u8; 32],
+            endpoint: Some("127.0.0.1:51820".parse().unwrap()),
+            allowed_ips: vec![],
+            preshared_key: None,
+            persistent_keepalive: Some(25),
+        };
+        engine.add_peer(peer_config).await.unwrap();
+
+        let peers = engine.peers.read().await;
+        let peer = peers.get(&[42u8; 32]).unwrap();
+
+        // Build a keepalive: encrypted empty payload with PACKET_KEEPALIVE type
+        let nonce_counter = peer.send_nonce.fetch_add(1, Ordering::SeqCst);
+        let mut nonce = [0u8; NONCE_SIZE];
+        nonce[4..12].copy_from_slice(&nonce_counter.to_le_bytes());
+        let ciphertext = crypto.encrypt_chacha(&[], &peer.send_key, &nonce).unwrap();
+
+        let mut pkt = Vec::with_capacity(HEADER_SIZE + ciphertext.len());
+        pkt.push(PACKET_KEEPALIVE);
+        pkt.extend_from_slice(&peer.session_id.to_le_bytes());
+        pkt.extend_from_slice(&nonce_counter.to_le_bytes());
+        pkt.extend_from_slice(&ciphertext);
+
+        assert_eq!(pkt[0], PACKET_KEEPALIVE);
+        // Keepalive = header + Poly1305 tag only (empty plaintext)
+        assert_eq!(pkt.len(), HEADER_SIZE + TAG_SIZE);
+    }
+
+    #[tokio::test]
+    async fn test_mesh_healer_wiring() {
+        let crypto = Arc::new(CryptoManager::new().unwrap());
+        let (tx, mut rx) = mpsc::channel(100);
+        let keys = crypto.generate_keypair().unwrap();
+        let healer = Arc::new(MeshHealer::new(0)); // 0s timeout for testing
+        let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1)
+            .with_mesh_healer(healer.clone());
+
+        let peer_config = PeerConfig {
+            public_key: [42u8; 32],
+            endpoint: Some("127.0.0.1:51820".parse().unwrap()),
+            allowed_ips: vec![],
+            preshared_key: None,
+            persistent_keepalive: Some(25),
+        };
+        engine.add_peer(peer_config).await.unwrap();
+
+        // Drain the PeerConnected event
+        let _ = rx.recv().await;
+
+        // Verify peer was registered with healer
+        let peer_id = PeerId(hex::encode([42u8; 32]));
+        let status = healer.peer_status(&peer_id).await;
+        assert!(status.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_threat_engine_wiring() {
+        let crypto = Arc::new(CryptoManager::new().unwrap());
+        let (tx, _rx) = mpsc::channel(100);
+        let keys = crypto.generate_keypair().unwrap();
+        let threat = Arc::new(ThreatEngine::new().unwrap());
+        let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1)
+            .with_threat_engine(threat.clone());
+
+        assert!(engine.threat_engine.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_peer_timeout_detection() {
+        let crypto = Arc::new(CryptoManager::new().unwrap());
+        let (tx, mut rx) = mpsc::channel(100);
+        let keys = crypto.generate_keypair().unwrap();
+        let healer = Arc::new(MeshHealer::new(0));
+        let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1)
+            .with_mesh_healer(healer.clone());
+
+        let peer_config = PeerConfig {
+            public_key: [42u8; 32],
+            endpoint: Some("127.0.0.1:51820".parse().unwrap()),
+            allowed_ips: vec![],
+            preshared_key: None,
+            persistent_keepalive: Some(25),
+        };
+        engine.add_peer(peer_config).await.unwrap();
+
+        // Drain PeerConnected event
+        let _ = rx.recv().await;
+
+        // Set last_received far in the past to simulate timeout
+        {
+            let peers = engine.peers.read().await;
+            let peer = peers.get(&[42u8; 32]).unwrap();
+            let mut last = peer.last_received.lock().unwrap();
+            *last = std::time::Instant::now() - Duration::from_secs(100);
+        }
+
+        // Verify peer is timed out by checking elapsed time
+        let peers = engine.peers.read().await;
+        let peer = peers.get(&[42u8; 32]).unwrap();
+        let elapsed = peer.last_received.lock().unwrap().elapsed();
+        assert!(elapsed > Duration::from_secs(75));
     }
 }

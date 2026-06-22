@@ -4,6 +4,7 @@
 //! with Dilithium-2 for identity authentication.
 //!
 //! Protocol flow:
+//! ```text
 //!   Initiator                        Responder
 //!   ---------                        ---------
 //!   1. Generate ephemeral x25519 keypair
@@ -21,17 +22,20 @@
 //!      Compute x25519 shared = DH(i_ephem, r_ephem_pub)
 //!      Derive transport keys from x25519_ss || kyber_ss
 //!      Both sides now have identical transport keys
+//! ```
 //!
 //! Key derivation:
+//! ```text
 //!   ikm = x25519_shared_secret || kyber_shared_secret || initiator_pub || responder_pub
 //!   send_key = BLAKE3_derive_key("phantommesh-send", ikm)
 //!   recv_key = BLAKE3_derive_key("phantommesh-recv", ikm)
+//! ```
 
 use pqcrypto_kyber::kyber768;
 use pqcrypto_dilithium::dilithium2;
 use pqcrypto_traits::kem::{Ciphertext as KemCiphertext, SharedSecret, PublicKey as KemPublicKey, SecretKey as KemSecretKey};
 use pqcrypto_traits::sign::{PublicKey as SignPublicKey, SecretKey as SignSecretKey, SignedMessage};
-use tracing::{info, debug, warn};
+use tracing::{info, debug};
 
 const HANDSHAKE_VERSION: u8 = 1;
 const MSG_INIT: u8 = 0x01;
@@ -247,9 +251,9 @@ pub fn process_init_and_respond(
 
     // Derive transport keys from:
     //   kyber_ss || sorted(static_keys) || sorted(ephem_keys)
-    let mut sorted_statics = vec![initiator_static.to_vec(), identity.x25519_public.to_vec()];
+    let mut sorted_statics = [initiator_static.to_vec(), identity.x25519_public.to_vec()];
     sorted_statics.sort();
-    let mut sorted_ephems = vec![initiator_ephem.to_vec(), resp_ephem_public.to_vec()];
+    let mut sorted_ephems = [initiator_ephem.to_vec(), resp_ephem_public.to_vec()];
     sorted_ephems.sort();
 
     let mut ikm = Vec::new();
@@ -258,8 +262,6 @@ pub fn process_init_and_respond(
     ikm.extend_from_slice(&sorted_statics[1]);
     ikm.extend_from_slice(&sorted_ephems[0]);
     ikm.extend_from_slice(&sorted_ephems[1]);
-
-
 
     let send_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
     let recv_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
@@ -288,7 +290,7 @@ pub fn process_init_and_respond(
     resp_msg.push(HANDSHAKE_VERSION);
     resp_msg.extend_from_slice(&resp_ephem_public);
     // Encrypt Kyber SS under a key derived from sorted ephemeral public keys
-    let mut sorted_ephems = vec![initiator_ephem.to_vec(), resp_ephem_public.to_vec()];
+    let mut sorted_ephems = [initiator_ephem.to_vec(), resp_ephem_public.to_vec()];
     sorted_ephems.sort();
     let transport_seed = blake3::hash(&sorted_ephems.concat());
 
@@ -382,13 +384,8 @@ pub fn process_response(
         }
     }
 
-    // Deterministic shared secret from both ephemeral PUBLIC keys (same computation as responder)
-    let mut dh_keys = vec![state.ephem_public.to_vec(), resp_ephem.to_vec()];
-    dh_keys.sort();
-    let x25519_shared = blake3::hash(&dh_keys.concat());
-
     // Decrypt the Kyber shared secret using same ephemeral key derivation
-    let mut sorted_ephems = vec![state.ephem_public.to_vec(), resp_ephem.to_vec()];
+    let mut sorted_ephems = [state.ephem_public.to_vec(), resp_ephem.to_vec()];
     sorted_ephems.sort();
     let transport_seed = blake3::hash(&sorted_ephems.concat());
 
@@ -404,7 +401,7 @@ pub fn process_response(
         buf[..32].to_vec()
     };
 
-    let mut sorted_statics = vec![identity.x25519_public.to_vec(), state.peer_static.to_vec()];
+    let mut sorted_statics = [identity.x25519_public.to_vec(), state.peer_static.to_vec()];
     sorted_statics.sort();
 
     let mut ikm = Vec::new();
@@ -414,16 +411,8 @@ pub fn process_response(
     ikm.extend_from_slice(&sorted_ephems[0]);
     ikm.extend_from_slice(&sorted_ephems[1]);
 
-
-
     let send_key_hash = blake3::derive_key("phantommesh-to-responder-v1", &ikm);
     let recv_key_hash = blake3::derive_key("phantommesh-to-initiator-v1", &ikm);
-
-    let mut send_key = [0u8; 32];
-    let mut recv_key = [0u8; 32];
-    send_key.copy_from_slice(&send_key_hash);
-    recv_key.copy_from_slice(&recv_key_hash);
-
 
     let mut send_key = [0u8; 32];
     let mut recv_key = [0u8; 32];

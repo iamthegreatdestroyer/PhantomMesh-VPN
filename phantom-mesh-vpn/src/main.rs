@@ -6,11 +6,12 @@
 //! Licensed under GPL-3.0 with proprietary agent clauses.
 
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use tracing::{info, warn};
 use tracing_subscriber::fmt::format::json;
 use rand::RngCore;
 
+use phantom_mesh::mesh::healer::MeshHealer;
 use phantom_mesh::security_layer::{crypto_manager::CryptoManager, sigma_vault::SigmaVault, threat_engine::ThreatEngine};
 use phantom_mesh::vpn_core::{tunnel_engine::TunnelEngine, api_gateway::ApiGateway};
 use phantom_mesh::metrics::{init_metrics, update_system_metrics};
@@ -33,8 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let crypto = Arc::new(CryptoManager::new()?);
 
     // Initialize threat engine
-    let threat_engine = Arc::new(Mutex::new(ThreatEngine::new()?));
-    threat_engine.lock().await.initialize().await?;
+    let threat_engine = Arc::new(ThreatEngine::new()?);
+    threat_engine.initialize().await?;
 
     // Initialize ΣVault dimensional scattering system
     let mut sigma_vault_master_key = [0u8; 32];
@@ -47,11 +48,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create event channel for agent hooks
     let (event_tx, mut event_rx) = mpsc::channel(100);
 
-    // Initialize tunnel engine
-    let _tunnel_engine = Arc::new(TunnelEngine::new(crypto.clone(), sigma_vault.clone(), event_tx));
+    // Initialize mesh healer (75s timeout = 3 missed keepalives)
+    let mesh_healer = Arc::new(MeshHealer::new(75));
+
+    // Initialize tunnel engine with handshake-derived keys
+    let keys = crypto.generate_keypair().map_err(|e| e.to_string())?;
+    let _tunnel_engine = Arc::new(
+        TunnelEngine::new(crypto.clone(), event_tx, keys.0, keys.1)
+            .with_mesh_healer(mesh_healer)
+            .with_threat_engine(Arc::clone(&threat_engine))
+    );
 
     // Initialize API gateway with threat engine
-    let api_gateway = ApiGateway::new(Arc::clone(&threat_engine));
+    let api_threat_engine = Arc::new(tokio::sync::Mutex::new(ThreatEngine::new()?));
+    api_threat_engine.lock().await.initialize().await?;
+    let api_gateway = ApiGateway::new(api_threat_engine);
 
     // Start API server in background
     let _api_handle = tokio::spawn(async move {
@@ -91,14 +102,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         info!(peer = ?public_key[..8], "Peer disconnected");
                     }
                     phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::PacketRouted { dimension, bytes } => {
-                        // Debug level for high-frequency events
                         tracing::debug!(dimension, bytes, "Packet routed");
                     }
+                    phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::HandshakeCompleted { peer } => {
+                        info!(peer = ?peer[..8], "Handshake completed");
+                    }
                     phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::ThreatSignature { signature, source } => {
-                        warn!(signature = ?signature[..16], source = ?source, "Threat signature detected");
+                        warn!(source = ?source, "Threat signature detected in tunnel");
 
-                        // Analyze threat with threat engine
-                        let threat_result = threat_engine.lock().await.analyze_packet(&signature, Some(&source)).await;
+                        let threat_result = threat_engine.analyze_packet(&signature, Some(&source)).await;
                         if let Some(threat) = threat_result {
                             warn!(
                                 threat_id = ?threat.signature_id,
@@ -106,9 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 confidence = threat.confidence,
                                 "Threat confirmed by engine"
                             );
-
-                            // Generate alert
-                            threat_engine.lock().await.generate_alert(&threat).await?;
+                            threat_engine.generate_alert(&threat).await?;
                         }
                     }
                 }
