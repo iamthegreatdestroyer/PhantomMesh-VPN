@@ -1,86 +1,96 @@
-# PhantomMesh VPN — v2.0 Rebuild
+# PhantomMesh VPN v2.0 — Autonomous Completion Brief
 
-## Project Identity
-- **Repo:** `iamthegreatdestroyer/PhantomMesh-VPN`
-- **Language:** Rust (VPN core + crypto) + Python (agent orchestration)
-- **Castle Layer:** Layer 3 — Security
-- **Current version:** v1.0.0 (prototype, tunnel not functional)
-- **Target version:** v2.0.0 (production VPN with real tunneling)
-- **Replaces:** NordVPN, Tailscale, WireGuard GUI clients
+## Project Location
+- Rust workspace: `phantom-mesh-vpn/`
+- Main binary: `src/bin/cli.rs` (phantommesh CLI)
+- Tunnel engine: `src/vpn_core/tunnel_engine.rs`
+- Handshake: `src/security_layer/handshake.rs` (WORKING — 5/5 tests pass)
+- Mesh healer: `src/mesh/healer.rs` (WIRED — 8/8 tests pass)
+- Threat engine: `src/security_layer/threat_engine.rs` (WIRED — integrated into tunnel decrypt path)
+- Config: `src/vpn_core/config.rs`
 
-## v2.0 Rebuild Status (2026-06-21)
+## What Already Works (Do NOT break these)
+- `cargo test --lib security_layer::handshake` — 5 tests MUST pass
+- `cargo test --lib vpn_core::tunnel_engine` — replay window + peer tests
+- `cargo test --lib mesh::healer` — existing healer tests
+- `cargo build --release --bin phantommesh` — MUST compile
+- TUN/TAP device creation on Linux
+- Bidirectional packet forwarding (UDP <-> TUN)
+- Nonce counter with anti-replay window
+- TOML config file loading
+- CLI: up/down/status/genkey/pubkey/config
+- Kill switch via iptables
+- DNS leak prevention
 
-The v1.0 audit revealed the tunnel engine is non-functional:
-- No TUN/TAP device integration (packets logged, not forwarded)
-- Nonce reuse (zero nonce for all packets — CRITICAL)
-- No proper key exchange (pre-shared key used as "demo")
-- No replay protection, no forward secrecy
-- Kyber/Dilithium crypto available but not wired into handshake
+## Security Rules (NON-NEGOTIABLE)
+- Private keys NEVER logged
+- Nonce NEVER reused (incrementing u64 counter)
+- Zero nonce (0) is reserved/rejected
+- ChaCha20-Poly1305 for all transport encryption
+- BLAKE3 for all key derivation
 
-### What WORKS (Keep):
-- CryptoManager (Kyber-768, Dilithium-2, ChaCha20-Poly1305, BLAKE3)
-- MeshHealer (peer reconnection with exponential backoff)
-- AgentTunnelNegotiator (peer selection by latency)
-- ThreatEngine (signature + anomaly detection)
-- ApiGateway (Axum HTTP API with Prometheus metrics)
-- Docker stack (8 services, Grafana, Loki, Prometheus)
-- Agent framework (APEX, CIPHER, FORTRESS coordinators)
+## Sprint 4: Wire Mesh Healer + Threat Engine
 
-### What NEEDS REWRITING:
-- tunnel_engine.rs — Complete rewrite with TUN/TAP + Noise handshake
-- routing_manager.rs — Complete rewrite with packet forwarding
-- main.rs — Wire up config loading + tunnel startup
-- Config system — TOML config file parsing
+### Goal
+Integrate the existing MeshHealer and ThreatEngine into the live tunnel engine
+so that peer disconnections are automatically detected and reconnected, and
+incoming packets are inspected for threats.
 
----
+### Tasks
+1. In tunnel_engine.rs, when a peer fails to respond to 3 consecutive keepalives,
+   emit a PeerDisconnected event and invoke MeshHealer to attempt reconnection
+2. Add a keepalive task that sends PACKET_KEEPALIVE to all peers every 25 seconds
+3. Wire ThreatEngine::analyze_packet() into the decrypt path — after decryption
+   but before writing to TUN, pass the packet through threat analysis
+4. If ThreatEngine flags a packet, log a warning and emit ThreatSignature event
+   (do NOT drop the packet — detection only, not blocking)
+5. Add integration test: start tunnel, simulate peer timeout, verify healer reconnects
+6. All existing tests must still pass
 
-## Rebuild Sprint Plan
+### Done Criteria
+- [x] Keepalive packets sent every 25 seconds to all peers
+- [x] Peer timeout detected after 75 seconds (3 missed keepalives)
+- [x] MeshHealer invoked on peer timeout
+- [x] ThreatEngine inspects decrypted packets
+- [x] Threat events emitted for flagged packets
+- [x] `cargo test` — all tests pass
+- [x] `cargo build --release --bin phantommesh` — compiles
 
-### Sprint 1: Core Tunnel Engine (CRITICAL)
-- [ ] TUN/TAP device creation via `tun-tap` crate on Linux
-- [ ] Proper Noise_IK handshake using x25519 + Kyber-768 hybrid
-- [ ] Nonce counter (incrementing u64, never reusing)
-- [ ] Anti-replay window (sliding bitmap, 2000 packets)
-- [ ] Packet encrypt/decrypt with ChaCha20-Poly1305
-- [ ] Bidirectional packet forwarding (TUN ↔ UDP)
+## Sprint 5: Polish + v2.0.0
 
-### Sprint 2: Configuration + CLI
-- [ ] TOML config file (`/etc/phantommesh/config.toml`)
-- [ ] Peer configuration (public keys, endpoints, allowed IPs)
-- [ ] CLI tool (`phantommesh up`, `status`, `add-peer`, `down`)
-- [ ] Key generation (`phantommesh genkey`, `pubkey`)
-- [ ] DNS configuration for tunnel
+### Goal
+Clean up warnings, add missing tests, update version to 2.0.0, ensure everything
+compiles cleanly.
 
-### Sprint 3: Network Security
-- [ ] Kill switch (iptables/nftables rules)
-- [ ] DNS leak prevention (force DNS through tunnel)
-- [ ] Split tunneling (AllowedIPs routing)
-- [ ] NAT traversal (STUN/UDP hole punching)
-- [ ] Forward secrecy via ephemeral keys
+### Tasks
+1. Fix all compiler warnings (unused imports, dead code)
+2. Update Cargo.toml version to "2.0.0"
+3. Add test for keepalive send/receive
+4. Add test for threat detection in tunnel path
+5. Update main.rs to wire handshake into tunnel startup
+6. Run `cargo clippy` and fix all warnings
+7. Run `cargo test` — all tests pass
+8. Run `cargo build --release` — clean build, no warnings
+9. Tag v2.0.0
 
-### Sprint 4: Mesh Networking
-- [ ] Peer discovery (ICE-like negotiation)
-- [ ] Multi-hop routing
-- [ ] Wire existing MeshHealer into real tunnel
-- [ ] Wire ThreatEngine into packet inspection
+### Done Criteria
+- [x] Zero compiler warnings
+- [x] Zero clippy warnings
+- [x] All tests pass
+- [x] Version in Cargo.toml = "2.0.0"
+- [x] `cargo build --release` succeeds cleanly
+- [x] Both binaries compile: phantommesh + phantom-node
 
-### Sprint 5: Integration + Polish
-- [ ] Systemd service files
-- [ ] Grafana dashboard for VPN metrics
-- [ ] Wire agent framework into tunnel events
-- [ ] Desktop client (Tauri) updates
-- [ ] v2.0.0 tag
-
-## Done Criteria
-- [ ] Two peers can establish encrypted tunnel with Kyber hybrid handshake
-- [ ] IP traffic flows through TUN device bidirectionally
-- [ ] Nonce never reused, replay protection active
-- [ ] Config loaded from TOML file
-- [ ] CLI can bring tunnel up/down and show status
-- [ ] Kill switch prevents traffic leaks
-- [ ] Works on Debian 13 (sigma-pipeline target)
+## Build Commands
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+cd phantom-mesh-vpn
+cargo test          # Run all tests
+cargo build --release --bin phantommesh  # Build CLI
+cargo clippy        # Lint check
+```
 
 ## Completion Signal
 ```bash
-git tag v2.0.0 && git push origin v2.0.0
+git add -A && git commit -m "PhantomMesh v2.0.0 — production VPN with mesh healing + threat detection" && git tag v2.0.0
 ```
