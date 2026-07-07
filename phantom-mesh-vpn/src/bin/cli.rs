@@ -13,13 +13,16 @@ use std::io::{self, Read};
 use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use phantom_mesh::mesh::healer::MeshHealer;
 use phantom_mesh::security_layer::crypto_manager::CryptoManager;
 use phantom_mesh::security_layer::handshake::NodeIdentity;
+use phantom_mesh::security_layer::threat_engine::ThreatEngine;
+use phantom_mesh::vpn_core::api_gateway::ApiGateway;
 use phantom_mesh::vpn_core::config::Config;
 use phantom_mesh::vpn_core::tunnel_engine::{TunnelEngine, PeerConfig};
+use phantom_mesh::metrics::{init_metrics, update_system_metrics};
 
 fn print_usage() {
     eprintln!("PhantomMesh VPN v{}", env!("CARGO_PKG_VERSION"));
@@ -251,6 +254,18 @@ async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send +
 
     info!("PhantomMesh VPN v{} starting", env!("CARGO_PKG_VERSION"));
 
+    // Prometheus metrics + status HTTP server (Stage 6). Previously only
+    // src/main.rs's `phantom-node` binary started this — but `phantom-node`
+    // never actually starts a tunnel (see main.rs's own TODOs), so in
+    // production (where this `phantommesh` binary, not `phantom-node`, is
+    // what systemd actually runs) `/metrics` and `/health` were never
+    // reachable at all, and `phantommesh status` (which polls
+    // http://127.0.0.1:8080/health below) always reported DOWN regardless
+    // of real tunnel state. Wiring it in here — the actual `up` path — is
+    // what makes both of those genuinely work.
+    init_metrics();
+    info!("Prometheus metrics initialized");
+
     let crypto = Arc::new(CryptoManager::new()?);
     let private_key = config.decode_private_key()
         .map_err(|e| format!("Invalid private key: {}", e))?;
@@ -266,12 +281,57 @@ async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send +
     // reconnect path added in this stage would never run for anyone
     // actually using `phantommesh up`, regardless of the underlying fix.
     let mesh_healer = Arc::new(MeshHealer::new(75));
+
+    // Real in-tunnel threat detection (Stage 6). `main.rs`'s phantom-node
+    // binary already wired this via `.with_threat_engine()` — every inbound
+    // decrypted packet gets passed through `analyze_packet`, and a match
+    // emits `TunnelEvent::ThreatSignature` (handled below in the event
+    // loop). This CLI (the binary that actually runs a real tunnel) never
+    // did this, meaning `phantommesh up` ran with zero in-tunnel threat
+    // detection regardless of the detection engine itself working fine.
+    // Separate instance from `api_threat_engine` above: `with_threat_engine`
+    // needs a bare `Arc<ThreatEngine>` (called concurrently from the tunnel
+    // packet path), while `ApiGateway::new` needs `Arc<Mutex<ThreatEngine>>`
+    // for its own independently-locked /threat/* routes — same two-instance
+    // split main.rs already uses, not new duplication introduced here.
+    let tunnel_threat_engine = Arc::new(ThreatEngine::new()?);
+    tunnel_threat_engine.initialize().await?;
+
     let engine = Arc::new(TunnelEngine::new(
         crypto.clone(),
         event_tx,
         private_key,
         public_key,
-    ).with_mesh_healer(mesh_healer));
+    )
+        .with_mesh_healer(mesh_healer)
+        .with_threat_engine(Arc::clone(&tunnel_threat_engine)));
+
+    // Start the metrics/status HTTP server (same ApiGateway + "/health" +
+    // "/metrics" routes main.rs's phantom-node binary already served — see
+    // vpn_core::api_gateway::ApiGateway::router). ApiGateway needs its own
+    // ThreatEngine handle for the /threat/* routes; matching main.rs's
+    // existing pattern, this is a separate ThreatEngine instance from the
+    // one (if any) wired into the tunnel engine itself, since ApiGateway's
+    // constructor takes ownership of the Arc<Mutex<...>> independently.
+    let api_threat_engine = Arc::new(tokio::sync::Mutex::new(ThreatEngine::new()?));
+    api_threat_engine.lock().await.initialize().await?;
+    let api_gateway = ApiGateway::new(api_threat_engine);
+    let _api_handle = tokio::spawn(async move {
+        if let Err(e) = api_gateway.serve("0.0.0.0:8080").await {
+            error!("API gateway error: {}", e);
+        }
+    });
+    info!("API gateway available on http://0.0.0.0:8080 (/health, /metrics)");
+
+    // Periodic system-metrics refresh (memory/CPU gauges), same interval
+    // and pattern as main.rs's background task.
+    let _metrics_handle = tokio::spawn(async {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            update_system_metrics();
+        }
+    });
 
     // Add peers from config
     for peer_cfg in &config.peers {
@@ -370,6 +430,27 @@ async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send +
                 phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::HandshakeCompleted { peer } => {
                     info!(peer = %hex::encode(&peer[..8]), "Handshake completed");
                 }
+                phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::PacketRouted { dimension, bytes } => {
+                    tracing::debug!(dimension, bytes, "Packet routed");
+                }
+                phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::ThreatSignature { signature, source } => {
+                    // Mirrors main.rs's handling exactly: re-run the full
+                    // engine (not just the inline detection that already
+                    // ran once inside the tunnel packet path) so a real
+                    // alert actually gets generated, not just logged.
+                    warn!(source = ?source, "Threat signature detected in tunnel");
+
+                    let threat_result = tunnel_threat_engine.analyze_packet(&signature, Some(&source)).await;
+                    if let Some(threat) = threat_result {
+                        warn!(
+                            threat_id = ?threat.signature_id,
+                            severity = ?threat.severity,
+                            confidence = threat.confidence,
+                            "Threat confirmed by engine"
+                        );
+                        tunnel_threat_engine.generate_alert(&threat).await?;
+                    }
+                }
                 phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::FatalError { task, reason } => {
                     // A supervised task (UDP recv, TUN read, or keepalive)
                     // hit a fatal error; TunnelEngine has already flipped
@@ -380,7 +461,6 @@ async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send +
                     error!(task = task, reason = %reason, "Fatal task failure, shutting down tunnel");
                     shutdown_and_exit(engine.clone(), "fatal task failure").await;
                 }
-                _ => {}
             }
         }
     }

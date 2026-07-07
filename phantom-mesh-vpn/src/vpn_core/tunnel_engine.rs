@@ -18,10 +18,56 @@ use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
+use lazy_static::lazy_static;
+use prometheus::{Counter, Opts, Registry};
+
 use super::super::security_layer::crypto_manager::CryptoManager;
 use crate::mesh::healer::{DisconnectReason, MeshHealer, PeerId};
 use crate::security_layer::handshake::{self, HandshakeResult, InitiatorState, NodeIdentity};
 use crate::security_layer::threat_engine::ThreatEngine;
+
+// ============================================================================
+// Prometheus metrics (Stage 6)
+//
+// TunnelStats (below) is this engine's own private, in-process struct —
+// useful for `get_stats()` callers but never exported anywhere. These
+// counters mirror the same real update sites (see `packets_sent`/
+// `bytes_sent`/`packets_received`/`bytes_received`/`handshakes_completed`
+// below) into metrics.rs's already-served METRICS_REGISTRY, the same
+// registry/pattern used by mesh::healer's MESH_RECONNECT_* metrics.
+// `phantom_vpn_packets_total` / `phantom_vpn_bytes_total` already existed in
+// metrics.rs (declared but never incremented by anything real) — reused
+// here rather than inventing new names. There is no existing metric for
+// handshake completions, so VPN_HANDSHAKES_TOTAL is new.
+//
+// Label note: `tunnel_id` is fixed to "default" — this engine manages
+// exactly one tunnel per process (one `phantommesh up` = one TunnelEngine),
+// so there is no real per-tunnel value to multiplex on at these call sites
+// today. This is the genuine identifier for "this process's one tunnel",
+// not a placeholder standing in for missing data.
+// ============================================================================
+
+const TUNNEL_ID_LABEL: &str = "default";
+
+lazy_static! {
+    pub static ref VPN_HANDSHAKES_TOTAL: Counter = Counter::with_opts(
+        Opts::new(
+            "phantom_vpn_handshakes_completed_total",
+            "Total completed handshakes (initial + rekey) across all peers",
+        )
+    )
+    .unwrap();
+}
+
+/// Register this module's real counters into `registry`. Mirrors
+/// `mesh::healer::register_metrics`'s pattern exactly (idempotent via
+/// `.ok()` rather than `.unwrap()`, called once from
+/// `metrics::init_metrics()`). `VPN_PACKETS_TOTAL`/`VPN_BYTES_TOTAL` are
+/// declared and already registered in metrics.rs itself — only the new
+/// handshake counter needs registering here.
+pub fn register_metrics(registry: &Registry) {
+    registry.register(Box::new(VPN_HANDSHAKES_TOTAL.clone())).ok();
+}
 
 // ============================================================================
 // Constants
@@ -648,6 +694,13 @@ impl TunnelEngine {
                             let mut s = stats1.lock().await;
                             s.packets_received += 1;
                             s.bytes_received += len as u64;
+                            drop(s);
+                            crate::metrics::VPN_PACKETS_TOTAL
+                                .with_label_values(&["received", TUNNEL_ID_LABEL])
+                                .inc();
+                            crate::metrics::VPN_BYTES_TOTAL
+                                .with_label_values(&["received", TUNNEL_ID_LABEL])
+                                .inc_by(len as u64);
                         }
                     }
                     Err(e) => {
@@ -767,6 +820,13 @@ impl TunnelEngine {
                                         let mut s = stats2.lock().await;
                                         s.packets_sent += 1;
                                         s.bytes_sent += pkt.len() as u64;
+                                        drop(s);
+                                        crate::metrics::VPN_PACKETS_TOTAL
+                                            .with_label_values(&["sent", TUNNEL_ID_LABEL])
+                                            .inc();
+                                        crate::metrics::VPN_BYTES_TOTAL
+                                            .with_label_values(&["sent", TUNNEL_ID_LABEL])
+                                            .inc_by(pkt.len() as u64);
                                     }
                                     Err(e) => { error!("Encrypt: {}", e); }
                                 }
@@ -1484,6 +1544,7 @@ impl HandshakeHelper {
             let mut stats = self.stats.lock().await;
             stats.handshakes_completed += 1;
         }
+        VPN_HANDSHAKES_TOTAL.inc();
 
         let _ = self.event_tx.send(TunnelEvent::HandshakeCompleted { peer: peer_key }).await;
     }

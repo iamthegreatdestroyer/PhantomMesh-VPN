@@ -162,6 +162,16 @@ pub fn init_metrics() {
     // there is no separate, still-pending Stage 6 registry-merge step left
     // for these two metrics specifically.
     crate::mesh::healer::register_metrics(&METRICS_REGISTRY);
+
+    // Stage 6: same treatment for tunnel_engine's real packet/byte/handshake
+    // counters — VPN_PACKETS_TOTAL/VPN_BYTES_TOTAL were declared and
+    // registered above but nothing ever called `.inc()`/`.inc_by()` on them
+    // anywhere in the codebase before this stage; VPN_HANDSHAKES_TOTAL is a
+    // new counter this stage adds (no existing metric covered handshake
+    // completions). This call only registers the tunnel_engine-owned
+    // VPN_HANDSHAKES_TOTAL counter — VPN_PACKETS_TOTAL/VPN_BYTES_TOTAL are
+    // already registered above since they live in this module.
+    crate::vpn_core::tunnel_engine::register_metrics(&METRICS_REGISTRY);
 }
 
 /// Update system metrics
