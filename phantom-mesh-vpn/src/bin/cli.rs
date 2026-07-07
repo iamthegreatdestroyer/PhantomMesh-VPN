@@ -15,6 +15,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
+use phantom_mesh::mesh::healer::MeshHealer;
 use phantom_mesh::security_layer::crypto_manager::CryptoManager;
 use phantom_mesh::security_layer::handshake::NodeIdentity;
 use phantom_mesh::vpn_core::config::Config;
@@ -258,12 +259,19 @@ async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send +
     info!(pubkey = %hex::encode(&public_key[..8]), "Identity loaded");
 
     let (event_tx, mut event_rx) = mpsc::channel(256);
+    // Mesh healer: 75s timeout (3 missed 25s keepalives), matching the
+    // production wiring in src/main.rs's phantom-node binary. Previously
+    // this CLI (`phantommesh up` — the binary that actually runs a real
+    // tunnel end-to-end) never wired a healer at all, meaning the mesh-heal
+    // reconnect path added in this stage would never run for anyone
+    // actually using `phantommesh up`, regardless of the underlying fix.
+    let mesh_healer = Arc::new(MeshHealer::new(75));
     let engine = Arc::new(TunnelEngine::new(
         crypto.clone(),
         event_tx,
         private_key,
         public_key,
-    ));
+    ).with_mesh_healer(mesh_healer));
 
     // Add peers from config
     for peer_cfg in &config.peers {

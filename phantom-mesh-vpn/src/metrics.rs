@@ -151,6 +151,17 @@ pub fn init_metrics() {
     THREAT_PATTERNS_ACTIVE
         .with_label_values(&["anomaly"])
         .set(0);
+
+    // Wire MeshHealer's reconnect-attempt/success-rate metrics into this
+    // module's already-served METRICS_REGISTRY (Stage 4). `register_metrics`
+    // previously existed but was never actually called anywhere, so these
+    // two metrics never appeared in real `/metrics` scrape output despite
+    // being tracked internally by every `heal_peer` call. This is a full
+    // merge into the one registry `MetricsServer::encode_metrics` (and
+    // therefore the real HTTP metrics endpoint) actually gathers from —
+    // there is no separate, still-pending Stage 6 registry-merge step left
+    // for these two metrics specifically.
+    crate::mesh::healer::register_metrics(&METRICS_REGISTRY);
 }
 
 /// Update system metrics

@@ -70,6 +70,20 @@ const DUAL_KEY_WINDOW_SECS: u64 = 10;
 const PENDING_HANDSHAKE_TIMEOUT_SECS: u64 = 10;
 
 // ============================================================================
+// Mesh-heal reconnect policy (Stage 4)
+// ============================================================================
+
+/// After sending a reconnect handshake INIT (via `try_reconnect_peer`), how
+/// long to wait for a REAL new session to actually be installed before
+/// reporting this one `heal_peer` attempt as failed. Deliberately shorter
+/// than `heal_peer`'s own per-attempt back-off delays (1s/2s/4s/.../60s) so a
+/// single attempt cannot itself stall the retry loop for longer than a
+/// normal round-trip-plus-slack should ever take; a peer that's actually
+/// unreachable will simply fail this attempt and let `heal_peer`'s back-off
+/// govern the pacing between attempts, same as before this stage.
+const RECONNECT_CONFIRM_TIMEOUT_SECS: u64 = 5;
+
+// ============================================================================
 // Data Types
 // ============================================================================
 
@@ -1025,7 +1039,12 @@ impl TunnelEngine {
                 // Ordinary heartbeat-timeout peers (NOT already handled via
                 // the newly_dead fast path above) go through the pre-existing
                 // heal_peer retry/back-off loop, unchanged from before this
-                // stage.
+                // stage — EXCEPT that `try_connect` now actually attempts a
+                // real reconnect (Stage 4) instead of the previous
+                // always-`false` stub, which meant every heal cycle
+                // exhausted its attempts and marked the peer Dead
+                // unconditionally, regardless of whether the peer was
+                // actually reachable again.
                 for (pk, _endpoint) in timed_out {
                     warn!(peer = ?hex::encode(&pk[..8]), "Peer timed out (no response for 75s)");
                     let _ = event_tx3.send(TunnelEvent::PeerDisconnected { public_key: pk }).await;
@@ -1033,12 +1052,33 @@ impl TunnelEngine {
                     if let Some(ref healer) = healer3 {
                         let peer_id = PeerId(hex::encode(pk));
                         let healer = healer.clone();
+                        // Captured directly as the raw [u8; 32] the calling
+                        // scope already has, rather than re-parsed back out
+                        // of peer_id's hex-string form.
+                        let peer_key = pk;
+                        let peers_for_lookup = peers3.clone();
+                        let handshaker_clone = handshaker.clone();
+                        let socket_clone = socket3.clone();
                         tokio::spawn(async move {
+                            // Look up the current Arc<PeerState> fresh at
+                            // heal time (not the read-locked snapshot from
+                            // the detection pass above) — the peer could in
+                            // principle have been removed between detection
+                            // and this spawned task actually running.
+                            let peer_arc = {
+                                let peers = peers_for_lookup.read().await;
+                                peers.get(&peer_key).cloned()
+                            };
+                            let Some(peer_arc) = peer_arc else {
+                                debug!(peer = ?hex::encode(&peer_key[..8]), "Heal skipped: peer was removed before heal cycle started");
+                                return;
+                            };
+
                             healer.heal_peer(
                                 &peer_id,
                                 DisconnectReason::HeartbeatTimeout,
                                 5,
-                                || async { false },
+                                || try_reconnect_peer(&handshaker_clone, &socket_clone, peer_key, &peer_arc),
                             ).await;
                         });
                     }
@@ -1288,6 +1328,14 @@ impl DecryptHelper {
 /// `start()` takes `&self`, not `self: Arc<Self>`, so a spawned task cannot
 /// hold a `TunnelEngine` reference across `.await` points. Same shape/reason
 /// as the pre-existing `DecryptHelper`.
+///
+/// `Clone` (Stage 4): every field is an `Arc<..>` or an `mpsc::Sender`
+/// (itself cheaply `Clone`), so this is a shallow, reference-counted clone —
+/// needed so `heal_peer`'s `try_connect` closure (itself run inside a nested
+/// `tokio::spawn`, see the keepalive task's `timed_out` handling) can own a
+/// copy of the same `HandshakeHelper` the keepalive task itself uses, rather
+/// than inventing a second, separately-constructed one.
+#[derive(Clone)]
 struct HandshakeHelper {
     identity: Arc<NodeIdentity>,
     peers: Arc<RwLock<HashMap<[u8; 32], Arc<PeerState>>>>,
@@ -1591,6 +1639,121 @@ impl HandshakeHelper {
     }
 }
 
+// ============================================================================
+// Mesh-heal reconnect (Stage 4)
+// ============================================================================
+
+/// `heal_peer`'s `try_connect` implementation for a real, statically-endpoint
+/// peer: actually attempt a reconnect via the SAME `initiate_handshake` path
+/// (and therefore the same `pending_handshakes`-keyed simultaneous-handshake
+/// tie-break in `handle_handshake_init`) used for the very first connection
+/// and every proactive rekey — this is deliberate, not incidental: a heal
+/// attempt and an ordinary reconnect both legitimately race against the peer
+/// independently deciding to reconnect around the same moment (e.g. both
+/// sides notice a dead link and both call this at nearly the same time), and
+/// that race is exactly what the tie-break exists to resolve. Inventing a
+/// second, separate reconnect mechanism here would silently bypass that
+/// protection for this one caller.
+///
+/// Scope (per the Stage 4 plan): if the peer has no statically-configured
+/// endpoint, this returns `false` immediately — no discovery/STUN/dynamic
+/// endpoint resolution is attempted, that is a deliberately separate, later
+/// capability.
+///
+/// Returns `true` only once a REAL new session has actually been installed
+/// as a direct result of THIS call's own `initiate_handshake` — never merely
+/// because the INIT was sent without erroring. Concretely: this captures the
+/// peer's session_id (if any) *before* sending the INIT, then polls
+/// `peer.session` for up to `RECONNECT_CONFIRM_TIMEOUT_SECS`, succeeding
+/// only when a session is present AND its session_id differs from whatever
+/// was captured beforehand.
+///
+/// That "differs from before" check is not a defensive nicety — it is load
+/// bearing. The keepalive task's 75s-timeout detection (see `start()`'s
+/// Task 3) does NOT clear `peer.session` to `None` at the moment a peer is
+/// judged timed-out; the old (now-stale) session simply sits there,
+/// unchanged, until a real rekey/reconnect eventually replaces it. A naive
+/// "succeeded once `peer.session` is `Some(..)`" check would therefore
+/// immediately read that pre-existing stale session on the very first poll
+/// and report success without this call having done anything at all. Session
+/// IDs are derived deterministically from the handshake's negotiated keys
+/// (see `TunnelEngine::session_from_handshake_result`), so a session
+/// installed by a genuinely new, completed handshake is guaranteed to carry
+/// a different session_id than whatever preceded it — comparing against the
+/// pre-call snapshot is what distinguishes "a real new session arrived" from
+/// "the old one was still there the whole time". Verified directly by
+/// `test_stale_session_does_not_cause_false_positive_reconnect` below and by
+/// the real two-instance manual test recorded in this stage's report.
+async fn try_reconnect_peer(
+    handshaker: &HandshakeHelper,
+    socket: &UdpSocket,
+    peer_key: [u8; 32],
+    peer: &Arc<PeerState>,
+) -> bool {
+    // Out of scope: dynamic/discovered endpoints. A peer with no
+    // statically-configured endpoint cannot be reconnected to at all here —
+    // initiate_handshake would itself return this same Err, but checking
+    // explicitly first avoids an INIT-send attempt (and its log noise) for a
+    // case that can never succeed, and makes the "no discovery" scope
+    // decision visible at this call site rather than only implicit in
+    // initiate_handshake's own error text.
+    if peer.config.endpoint.is_none() {
+        debug!(
+            peer = ?hex::encode(&peer_key[..8]),
+            "Cannot heal: peer has no statically-configured endpoint (dynamic discovery is out of scope)"
+        );
+        return false;
+    }
+
+    // Snapshot whatever session_id (if any) is installed BEFORE this
+    // attempt, so success can be judged against "a NEW session arrived",
+    // never "a session happens to be present" — see the stale-session
+    // false-positive risk in this function's doc comment above.
+    let session_id_before = {
+        let session_guard = peer.session.read().await;
+        session_guard.as_ref().map(|s| s.session_id)
+    };
+
+    if let Err(e) = handshaker.initiate_handshake(socket, peer_key, peer).await {
+        debug!(peer = ?hex::encode(&peer_key[..8]), error = %e, "Heal attempt: initiate_handshake failed");
+        return false;
+    }
+
+    // Poll for a genuinely NEW session to appear, bounded by
+    // RECONNECT_CONFIRM_TIMEOUT_SECS. Polling (rather than an event/notify
+    // channel) mirrors the same lightweight approach already used elsewhere
+    // in this file for bounded waits on shared state guarded by a plain
+    // RwLock, and keeps this function self-contained (no new plumbing
+    // through HandshakeHelper/install_session needed just for this one
+    // caller).
+    let deadline = Instant::now() + Duration::from_secs(RECONNECT_CONFIRM_TIMEOUT_SECS);
+    loop {
+        {
+            let session_guard = peer.session.read().await;
+            if let Some(session) = session_guard.as_ref() {
+                if Some(session.session_id) != session_id_before {
+                    info!(
+                        peer = ?hex::encode(&peer_key[..8]),
+                        session_id = session.session_id,
+                        "Heal attempt succeeded: new session installed"
+                    );
+                    return true;
+                }
+            }
+        }
+
+        if Instant::now() >= deadline {
+            debug!(
+                peer = ?hex::encode(&peer_key[..8]),
+                "Heal attempt: timed out waiting for a new session to be installed"
+            );
+            return false;
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 /// Result of processing one inbound UDP datagram via
 /// `process_inbound_datagram`. Callers use this to decide what to do with
 /// decrypted data (e.g. `start()`'s real Task 1 writes it to the TUN device;
@@ -1724,6 +1887,7 @@ async fn process_inbound_datagram(
 mod tests {
     use super::*;
     use crate::security_layer::handshake::NodeIdentity;
+    use crate::mesh::healer::{PeerStatus, ReconnectOutcome};
 
     /// Generate a real X25519 keypair for test-only TunnelEngine construction.
     /// Replaces the old CryptoManager::generate_keypair() (deleted in the
@@ -2105,6 +2269,164 @@ mod tests {
         assert!(h.udp_recv.is_none());
         assert!(h.tun_read.is_none());
         assert!(h.keepalive.is_none());
+    }
+
+    /// Stage 4: `heal_peer` driven by the REAL `try_reconnect_peer`
+    /// implementation (not a stub closure) against a peer endpoint that has
+    /// a real, bound `SocketAddr` but genuinely nothing listening on it —
+    /// obtained by binding a throwaway UDP socket to port 0 (OS-assigned),
+    /// reading back its address, then dropping the socket so the port is
+    /// real but unoccupied. `initiate_handshake`'s `send_to` itself succeeds
+    /// (UDP is connectionless — sending to a closed port is not an error at
+    /// the socket-API level), but no RESP can ever arrive, so every single
+    /// `try_reconnect_peer` call must time out waiting for a new session and
+    /// return `false`. This proves the retry loop correctly exhausts after
+    /// `max_attempts` against a REAL unreachable endpoint — not hanging,
+    /// not panicking, not false-succeeding — and reports
+    /// `ReconnectOutcome::Exhausted`.
+    #[tokio::test]
+    async fn test_heal_peer_exhausts_against_real_closed_port() {
+        let crypto = Arc::new(CryptoManager::new().unwrap());
+        let (tx, _rx) = mpsc::channel(100);
+        let keys = test_keypair();
+        let healer = Arc::new(MeshHealer::new(30));
+        let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1)
+            .with_mesh_healer(healer.clone());
+
+        // A real bound-then-dropped UDP socket address: genuinely valid,
+        // genuinely nothing listening.
+        let throwaway = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let dead_endpoint = throwaway.local_addr().unwrap();
+        drop(throwaway);
+
+        let peer_key = [7u8; 32];
+        engine.add_peer(PeerConfig {
+            public_key: peer_key,
+            endpoint: Some(dead_endpoint),
+            allowed_ips: vec![],
+            preshared_key: None,
+            persistent_keepalive: Some(25),
+        }).await.unwrap();
+
+        let peer_id = PeerId(hex::encode(peer_key));
+        assert_eq!(healer.peer_status(&peer_id).await, Some(PeerStatus::Connected));
+
+        let handshaker = HandshakeHelper {
+            identity: engine.identity.clone(),
+            peers: engine.peers.clone(),
+            session_map: engine.session_map.clone(),
+            pending_handshakes: engine.pending_handshakes.clone(),
+            stats: engine.stats.clone(),
+            event_tx: engine.event_tx.clone(),
+        };
+        // Our own real UDP socket to send FROM (the peer's dead_endpoint is
+        // the destination, not this one).
+        let our_socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+
+        let peer_arc = {
+            let peers = engine.peers.read().await;
+            peers.get(&peer_key).unwrap().clone()
+        };
+
+        // max_attempts=2 (not the production 5) purely to keep this test's
+        // wall-clock time bounded — each attempt already costs up to
+        // RECONNECT_CONFIRM_TIMEOUT_SECS (5s) waiting for a session that can
+        // never arrive, plus the 1s back-off between attempt 1 and 2. The
+        // retry-loop/back-off/exhaustion mechanics being tested here are
+        // identical regardless of max_attempts' value.
+        let start = Instant::now();
+        let outcome = healer.heal_peer(
+            &peer_id,
+            DisconnectReason::HeartbeatTimeout,
+            2,
+            || try_reconnect_peer(&handshaker, &our_socket, peer_key, &peer_arc),
+        ).await;
+        let elapsed = start.elapsed();
+
+        assert_eq!(outcome, ReconnectOutcome::Exhausted, "heal_peer against a real closed port must exhaust, not succeed");
+        assert_eq!(healer.peer_status(&peer_id).await, Some(PeerStatus::Dead), "peer must be marked Dead after exhausting all attempts");
+        // Sanity bound: 2 attempts * 5s confirm-timeout + 1s back-off ≈ 11s
+        // worst case; well under a minute, proving this did not hang.
+        assert!(elapsed < Duration::from_secs(30), "heal_peer took implausibly long ({:?}) — may be hanging rather than timing out per-attempt", elapsed);
+    }
+
+    /// Stage 4, the specific stale-session false-positive risk called out in
+    /// the plan: the keepalive task's 75s-timeout detection does NOT clear
+    /// `peer.session` to `None` before `heal_peer` is invoked (see `start()`
+    /// Task 3's `timed_out` handling) — the old session simply sits there
+    /// unchanged. A naive `try_connect` that reports success merely because
+    /// `peer.session.read().await.is_some()` would immediately false-report
+    /// success on THIS pre-existing stale session, without
+    /// `try_reconnect_peer`'s own `initiate_handshake` call having produced
+    /// anything real. This test proves `try_reconnect_peer` does NOT fall
+    /// into that trap: with a stale session already installed and NO peer on
+    /// the other end of its (real, closed) endpoint to ever complete a new
+    /// handshake, the call must still report `false`, because the
+    /// session_id present after the call is IDENTICAL to the one present
+    /// before it (the stale one, untouched) rather than a new one.
+    #[tokio::test]
+    async fn test_stale_session_does_not_cause_false_positive_reconnect() {
+        let crypto = Arc::new(CryptoManager::new().unwrap());
+        let (tx, _rx) = mpsc::channel(100);
+        let keys = test_keypair();
+        let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1);
+
+        let throwaway = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let dead_endpoint = throwaway.local_addr().unwrap();
+        drop(throwaway);
+
+        let peer_key = [9u8; 32];
+        engine.add_peer(PeerConfig {
+            public_key: peer_key,
+            endpoint: Some(dead_endpoint),
+            allowed_ips: vec![],
+            preshared_key: None,
+            persistent_keepalive: Some(25),
+        }).await.unwrap();
+
+        // Install a real (but now stale, as if from before the peer went
+        // dark) session directly — mirrors exactly the state the keepalive
+        // task's timeout detection leaves behind: peer.session is Some(..),
+        // untouched, at the moment heal_peer is invoked.
+        let stale_session_id = {
+            let result = real_handshake_result();
+            let session = TunnelEngine::session_from_handshake_result(&result);
+            let sid = session.session_id;
+            let peers = engine.peers.read().await;
+            let peer = peers.get(&peer_key).unwrap();
+            *peer.session.write().await = Some(session);
+            sid
+        };
+
+        let handshaker = HandshakeHelper {
+            identity: engine.identity.clone(),
+            peers: engine.peers.clone(),
+            session_map: engine.session_map.clone(),
+            pending_handshakes: engine.pending_handshakes.clone(),
+            stats: engine.stats.clone(),
+            event_tx: engine.event_tx.clone(),
+        };
+        let our_socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let peer_arc = {
+            let peers = engine.peers.read().await;
+            peers.get(&peer_key).unwrap().clone()
+        };
+
+        let result = try_reconnect_peer(&handshaker, &our_socket, peer_key, &peer_arc).await;
+
+        assert!(!result, "try_reconnect_peer must NOT report success merely because a stale pre-existing session is present — this would be exactly the false-positive the plan warned about");
+
+        // Confirm the session_id is STILL the stale one — nothing replaced
+        // it (there was no real peer to ever respond), proving the `false`
+        // above reflects reality and isn't a coincidental correct answer for
+        // the wrong reason.
+        let final_session_id = {
+            let peers = engine.peers.read().await;
+            let peer = peers.get(&peer_key).unwrap();
+            let session_guard = peer.session.read().await;
+            session_guard.as_ref().unwrap().session_id
+        };
+        assert_eq!(final_session_id, stale_session_id, "the stale session should remain exactly as it was — no real reconnection occurred");
     }
 }
 
@@ -2639,4 +2961,96 @@ mod live_handshake_tests {
     /// (value 1) — only used to build realistic-looking malformed test
     /// payloads above; not a real dependency on handshake.rs's internals.
     const HANDSHAKE_VERSION_FOR_TEST: u8 = 1;
+
+    /// Stage 4: the real end-to-end mesh-heal reconnect, over two real
+    /// TunnelEngine instances and real loopback sockets, driving the ACTUAL
+    /// `try_reconnect_peer` function (not a re-implementation or a stub) —
+    /// proving a peer that goes quiet and is detected as timed out really
+    /// does come back to a genuinely NEW, working session, not merely "no
+    /// error was returned".
+    ///
+    /// Faithfully reproduces the real production state at the moment
+    /// `heal_peer` is invoked: per `start()` Task 3's `timed_out` handling,
+    /// the peer's OLD session is left installed (untouched) when a 75s
+    /// timeout is detected — it is NOT cleared to `None` first. So this test
+    /// deliberately does NOT clear A's session before calling
+    /// `try_reconnect_peer`, matching that real behavior exactly, and relies
+    /// on `try_reconnect_peer`'s own before/after session_id comparison
+    /// (not "session is merely present") to correctly recognize the
+    /// genuinely-new session once one arrives.
+    #[tokio::test]
+    async fn test_try_reconnect_peer_installs_real_new_session_after_simulated_outage() {
+        let node_a = make_test_node().await;
+        let node_b = make_test_node().await;
+        configure_as_peers(&node_a, &node_b).await;
+        drive_handshake_to_completion(&node_a, &node_b).await;
+
+        let old_session_id = assert_has_established_session(&node_a, node_b.engine.local_public_key).await;
+
+        // Simulate the outage exactly as production leaves it: A's OLD
+        // session is still sitting there, untouched (no clearing), and
+        // last_received is backdated past the 75s timeout threshold so this
+        // matches what the keepalive task would have just observed.
+        {
+            let peers = node_a.engine.peers.read().await;
+            let peer = peers.get(&node_b.engine.local_public_key).unwrap();
+            let mut last = peer.last_received.lock().unwrap();
+            *last = Instant::now() - Duration::from_secs(KEEPALIVE_INTERVAL_SECS * 3 + 5);
+        }
+
+        let (_dec_a, handshaker_a) = helpers_for(&node_a);
+        let peer_arc = {
+            let peers = node_a.engine.peers.read().await;
+            peers.get(&node_b.engine.local_public_key).unwrap().clone()
+        };
+        let peer_key = node_b.engine.local_public_key;
+        let socket_a = node_a.socket.clone();
+
+        // Drive try_reconnect_peer concurrently with B's real receive side:
+        // try_reconnect_peer only sends the INIT and polls A's own session —
+        // something has to actually run B's (and then A's) real receive
+        // path for a genuine RESP round-trip to happen, exactly as the
+        // keepalive/UDP-recv tasks would in a real running process.
+        let reconnect_task = tokio::spawn(async move {
+            try_reconnect_peer(&handshaker_a, &socket_a, peer_key, &peer_arc).await
+        });
+
+        // B receives the reconnect INIT and responds (real
+        // handle_handshake_init, including the tie-break check — which is a
+        // no-op here since B has no pending outbound handshake of its own).
+        let outcome = recv_one(&node_b, Duration::from_secs(5)).await
+            .expect("B should receive A's reconnect INIT within 5s over real loopback");
+        assert!(matches!(outcome, InboundOutcome::HandshakeHandled));
+
+        // A receives the RESP and installs the new session — this is what
+        // try_reconnect_peer's polling loop is waiting to observe.
+        let outcome = recv_one(&node_a, Duration::from_secs(5)).await
+            .expect("A should receive B's RESP within 5s over real loopback");
+        assert!(matches!(outcome, InboundOutcome::HandshakeHandled));
+
+        let reconnect_succeeded = reconnect_task.await.expect("reconnect task should not panic");
+        assert!(reconnect_succeeded, "try_reconnect_peer must report true once a real new session is installed");
+
+        let new_session_id = assert_has_established_session(&node_a, node_b.engine.local_public_key).await;
+        assert_ne!(old_session_id, new_session_id, "reconnect must install a brand-new session_id, not silently keep the stale pre-outage one");
+
+        // Confirm the reconnection is not merely "no error" — real traffic
+        // actually flows again under the new session.
+        let plaintext = b"real data after mesh-heal reconnect";
+        let encrypted = {
+            let peers = node_a.engine.peers.read().await;
+            let peer = peers.get(&node_b.engine.local_public_key).unwrap();
+            let session_guard = peer.session.read().await;
+            node_a.engine.encrypt_packet(plaintext, session_guard.as_ref().unwrap()).unwrap()
+        };
+        node_a.socket.send_to(&encrypted, node_b.addr).await.unwrap();
+        let outcome = recv_one(&node_b, Duration::from_secs(5)).await
+            .expect("B should receive post-reconnect data within 5s over real loopback");
+        match outcome {
+            InboundOutcome::Data { plaintext: decrypted } => {
+                assert_eq!(decrypted, plaintext, "post-reconnect data packet did not decrypt correctly");
+            }
+            other => panic!("expected InboundOutcome::Data after mesh-heal reconnect, got {:?}", other),
+        }
+    }
 }
