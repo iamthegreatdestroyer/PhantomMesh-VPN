@@ -1496,6 +1496,44 @@ impl HandshakeHelper {
             }
         };
 
+        // Simultaneous-handshake tie-break. If we ALSO have a pending
+        // outbound handshake to this exact peer right now, both sides
+        // triggered initiate_handshake at nearly the same moment (a real,
+        // plausible race -- found via manual two-instance testing, not a
+        // hypothetical: two freshly-started peers, or two peers recovering
+        // from an outage together, can easily both decide to connect within
+        // the same few milliseconds). Left unhandled, each side processes
+        // the OTHER's INIT as responder and independently completes a
+        // DIFFERENT handshake with different ephemeral keys -- both sides
+        // end up with non-matching sessions and the tunnel never actually
+        // passes traffic, even though both sides log "handshake completed".
+        //
+        // Deterministic tie-break (mirrors the intent of WireGuard's own
+        // handling of simultaneous initiation): the side with the
+        // numerically smaller static public key always wins and keeps its
+        // own outbound attempt going; the other side defers, abandoning its
+        // own pending outbound handshake and processing the winner's INIT
+        // normally as responder. This guarantees exactly one handshake
+        // actually completes, so both sides converge on the same
+        // session_from_handshake_result-derived session_id.
+        {
+            let mut pending = self.pending_handshakes.write().await;
+            if pending.contains_key(&claimed_initiator_key) {
+                if self.identity.x25519_public < claimed_initiator_key {
+                    debug!(
+                        peer = ?hex::encode(&claimed_initiator_key[..8]),
+                        "Simultaneous handshake detected -- we win the tie-break (smaller static key), ignoring peer's INIT"
+                    );
+                    return;
+                }
+                pending.remove(&claimed_initiator_key);
+                debug!(
+                    peer = ?hex::encode(&claimed_initiator_key[..8]),
+                    "Simultaneous handshake detected -- we lose the tie-break (larger static key), abandoning our own INIT and processing theirs"
+                );
+            }
+        }
+
         // Send the response before installing the session locally — if the
         // send fails there's no point holding a session the peer will never
         // see a response for (they'll just time out and retry the INIT).
