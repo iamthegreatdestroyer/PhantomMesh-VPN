@@ -171,6 +171,25 @@ impl MeshHealer {
         self.peers.lock().await.get(peer_id).map(|s| s.status.clone())
     }
 
+    /// Mark a peer `Dead` immediately, bypassing `heal_peer`'s retry/back-off
+    /// loop entirely.
+    ///
+    /// Used by the tunnel engine for a session that has independently earned
+    /// "dead" status by its own security-expiry criteria (missed 3 keepalives
+    /// AND exceeded its rekey deadline without successfully rehandshaking) —
+    /// such a session should not get another `heal_peer` retry cycle, since
+    /// the underlying problem isn't transient connectivity but a session
+    /// whose keys are past their allowed lifetime. Running it through
+    /// `heal_peer` would incorrectly reset it into `Reconnecting` and retry
+    /// for up to a minute of back-off before landing on `Dead` anyway; this
+    /// skips straight there. A no-op if the peer isn't registered.
+    pub async fn mark_dead(&self, peer_id: &PeerId) {
+        let mut peers = self.peers.lock().await;
+        if let Some(s) = peers.get_mut(peer_id) {
+            s.status = PeerStatus::Dead;
+        }
+    }
+
     // ── Heartbeat check ──────────────────────────────────────────────────────
 
     /// Returns peer IDs whose last heartbeat exceeded the configured timeout.
@@ -343,6 +362,25 @@ mod tests {
 
         assert_eq!(outcome, ReconnectOutcome::Success);
         assert_eq!(healer.peer_status(&peer("p1")).await, Some(PeerStatus::Connected));
+    }
+
+    #[tokio::test]
+    async fn test_mark_dead_bypasses_retry_loop() {
+        let healer = MeshHealer::new(30);
+        healer.register_peer(peer("p1")).await;
+        assert_eq!(healer.peer_status(&peer("p1")).await, Some(PeerStatus::Connected));
+
+        healer.mark_dead(&peer("p1")).await;
+
+        assert_eq!(healer.peer_status(&peer("p1")).await, Some(PeerStatus::Dead));
+    }
+
+    #[tokio::test]
+    async fn test_mark_dead_is_noop_for_unregistered_peer() {
+        let healer = MeshHealer::new(30);
+        // Never registered — must not panic, must remain absent.
+        healer.mark_dead(&peer("ghost")).await;
+        assert_eq!(healer.peer_status(&peer("ghost")).await, None);
     }
 
     #[tokio::test]
