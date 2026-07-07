@@ -54,9 +54,11 @@ fn cmd_pubkey() {
         eprintln!("Error: private key must be 32 bytes (64 hex chars)");
         std::process::exit(1);
     }
-    // Derive public key using BLAKE3 (deterministic)
-    let hash = blake3::hash(&private_bytes);
-    println!("{}", hex::encode(&hash.as_bytes()[..32]));
+    // Derive public key via real X25519 (private_bytes is exactly 32 bytes, checked above).
+    let mut private_key = [0u8; 32];
+    private_key.copy_from_slice(&private_bytes);
+    let public_key = x25519_dalek::x25519(private_key, x25519_dalek::X25519_BASEPOINT_BYTES);
+    println!("{}", hex::encode(public_key));
 }
 
 fn cmd_config() {
@@ -185,9 +187,7 @@ async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send +
     let crypto = Arc::new(CryptoManager::new()?);
     let private_key = config.decode_private_key()
         .map_err(|e| format!("Invalid private key: {}", e))?;
-    let public_key_hash = blake3::hash(&private_key);
-    let mut public_key = [0u8; 32];
-    public_key.copy_from_slice(&public_key_hash.as_bytes()[..32]);
+    let public_key = x25519_dalek::x25519(private_key, x25519_dalek::X25519_BASEPOINT_BYTES);
 
     info!(pubkey = %hex::encode(&public_key[..8]), "Identity loaded");
 
