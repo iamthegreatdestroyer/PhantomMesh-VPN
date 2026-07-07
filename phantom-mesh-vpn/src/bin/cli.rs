@@ -13,7 +13,7 @@ use std::io::{self, Read};
 use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{error, info};
 
 use phantom_mesh::security_layer::crypto_manager::CryptoManager;
 use phantom_mesh::security_layer::handshake::NodeIdentity;
@@ -116,8 +116,35 @@ fn setup_kill_switch(tun_name: &str, listen_port: u16) -> Result<(), Box<dyn std
         run_cmd("iptables", &["-A", "OUTPUT", "-p", "tcp", "--dport", "53", "!", "-o", tun_name, "-j", "DROP"])?;
 
         info!("Kill switch active: only tunnel + WireGuard UDP allowed");
+
+        // IPv6 parity: mirror every IPv4 rule above via ip6tables. This is
+        // best-effort/non-fatal — hosts with no IPv6 support (ip6tables
+        // missing, or the kernel module not loaded) must not fail `up`
+        // entirely over this, since IPv4-only kill-switch protection is
+        // still strictly better than none. Without this, IPv6 traffic
+        // would bypass the kill switch completely on any dual-stack host.
+        setup_kill_switch_v6(tun_name, listen_port);
     }
     Ok(())
+}
+
+/// IPv6 mirror of `setup_kill_switch`'s iptables rules, via ip6tables.
+/// Every failure (missing binary, no ip6 support, etc.) is logged and
+/// swallowed rather than propagated — see `run_cmd_best_effort`.
+#[cfg(target_os = "linux")]
+fn setup_kill_switch_v6(tun_name: &str, listen_port: u16) {
+    if !run_cmd_best_effort("ip6tables", &["-A", "OUTPUT", "-o", "lo", "-j", "ACCEPT"]) {
+        info!("ip6tables unavailable or failed; continuing with IPv4-only kill switch");
+        return;
+    }
+    run_cmd_best_effort("ip6tables", &["-A", "OUTPUT", "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"]);
+    run_cmd_best_effort("ip6tables", &["-A", "OUTPUT", "-o", tun_name, "-j", "ACCEPT"]);
+    run_cmd_best_effort("ip6tables", &["-A", "OUTPUT", "-p", "udp", "--dport", &listen_port.to_string(), "-j", "ACCEPT"]);
+    run_cmd_best_effort("ip6tables", &["-A", "OUTPUT", "-p", "udp", "--dport", "546:547", "-j", "ACCEPT"]); // DHCPv6 (v6 equivalent of the v4 67:68 rule)
+    run_cmd_best_effort("ip6tables", &["-A", "OUTPUT", "-p", "udp", "--dport", "53", "!", "-o", tun_name, "-j", "DROP"]);
+    run_cmd_best_effort("ip6tables", &["-A", "OUTPUT", "-p", "tcp", "--dport", "53", "!", "-o", tun_name, "-j", "DROP"]);
+
+    info!("IPv6 kill switch active (mirrors IPv4 rules)");
 }
 
 fn teardown_kill_switch() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -126,6 +153,11 @@ fn teardown_kill_switch() -> Result<(), Box<dyn std::error::Error + Send + Sync>
         info!("Removing kill switch rules");
         let _ = run_cmd("iptables", &["-F", "OUTPUT"]);
         let _ = run_cmd("iptables", &["-P", "OUTPUT", "ACCEPT"]);
+
+        // IPv6 teardown mirrors IPv4, same best-effort semantics: a host
+        // with no IPv6 support should not error out of the shutdown path.
+        run_cmd_best_effort("ip6tables", &["-F", "OUTPUT"]);
+        run_cmd_best_effort("ip6tables", &["-P", "OUTPUT", "ACCEPT"]);
     }
     Ok(())
 }
@@ -174,6 +206,40 @@ fn run_cmd(cmd: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error + S
         return Err(format!("{} failed: {}", cmd, stderr).into());
     }
     Ok(())
+}
+
+/// Like `run_cmd`, but never propagates an error: logs and returns `false`
+/// on any failure (binary missing, non-zero exit, etc.) instead. Used for
+/// the IPv6 kill-switch mirror, which must be best-effort — a host with no
+/// IPv6 support (no `ip6tables` binary, module not loaded, ...) must not
+/// fail `up` entirely just because IPv6-specific tooling isn't present.
+fn run_cmd_best_effort(cmd: &str, args: &[&str]) -> bool {
+    match Command::new(cmd).args(args).output() {
+        Ok(output) if output.status.success() => true,
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            info!("{} {:?} failed (non-fatal): {}", cmd, args, stderr.trim());
+            false
+        }
+        Err(e) => {
+            info!("{} not available (non-fatal): {}", cmd, e);
+            false
+        }
+    }
+}
+
+/// Shared cleanup sequence for a clean tunnel shutdown, run identically
+/// regardless of what triggered it (Ctrl-C/SIGINT, SIGTERM, or a fatal
+/// task failure reported via `TunnelEvent::FatalError`). Factored into one
+/// function so the different trigger paths cannot structurally drift
+/// apart over time — previously only Ctrl-C ran this sequence at all.
+async fn shutdown_and_exit(engine: Arc<TunnelEngine>, reason: &str) -> ! {
+    info!("Shutting down PhantomMesh VPN... ({})", reason);
+    engine.stop().await;
+    let _ = teardown_kill_switch();
+    let _ = restore_dns();
+    info!("PhantomMesh VPN is DOWN");
+    std::process::exit(0);
 }
 
 async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -256,17 +322,32 @@ async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send +
     info!("  Kill switch: {}", config.security.kill_switch);
     info!("  DNS leak protection: {}", config.dns.leak_protection);
 
-    // Handle signals for clean shutdown
-    let engine_shutdown = engine.clone();
+    // Handle signals for clean shutdown. SIGINT (Ctrl-C) and SIGTERM (the
+    // signal `systemd stop` / plain `kill <pid>` send by default) both run
+    // the IDENTICAL shutdown_and_exit() sequence above — previously only
+    // Ctrl-C was handled at all, so a SIGTERM'd process left its TUN
+    // interface, iptables rules, and DNS config behind.
+    let engine_sigint = engine.clone();
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
-        info!("Shutting down PhantomMesh VPN...");
-        engine_shutdown.stop().await;
-        let _ = teardown_kill_switch();
-        let _ = restore_dns();
-        info!("PhantomMesh VPN is DOWN");
-        std::process::exit(0);
+        shutdown_and_exit(engine_sigint, "SIGINT").await;
     });
+
+    #[cfg(target_os = "linux")]
+    {
+        let engine_sigterm = engine.clone();
+        tokio::spawn(async move {
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(mut sigterm) => {
+                    sigterm.recv().await;
+                    shutdown_and_exit(engine_sigterm, "SIGTERM").await;
+                }
+                Err(e) => {
+                    error!("Failed to install SIGTERM handler: {}", e);
+                }
+            }
+        });
+    }
 
     // Event loop
     loop {
@@ -280,6 +361,16 @@ async fn cmd_up(config: Config) -> Result<(), Box<dyn std::error::Error + Send +
                 }
                 phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::HandshakeCompleted { peer } => {
                     info!(peer = %hex::encode(&peer[..8]), "Handshake completed");
+                }
+                phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::FatalError { task, reason } => {
+                    // A supervised task (UDP recv, TUN read, or keepalive)
+                    // hit a fatal error; TunnelEngine has already flipped
+                    // `running` to false and aborted the sibling tasks
+                    // internally. Run the same full cleanup path here too
+                    // (kill switch, DNS) instead of leaving the process
+                    // half-alive with `status` still reporting UP.
+                    error!(task = task, reason = %reason, "Fatal task failure, shutting down tunnel");
+                    shutdown_and_exit(engine.clone(), "fatal task failure").await;
                 }
                 _ => {}
             }

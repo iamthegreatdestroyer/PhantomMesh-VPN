@@ -124,6 +124,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             threat_engine.generate_alert(&threat).await?;
                         }
                     }
+                    phantom_mesh::vpn_core::tunnel_engine::TunnelEvent::FatalError { task, reason } => {
+                        // _tunnel_engine.start() is not called anywhere in
+                        // this binary today (see the TODOs above — network
+                        // listener wiring isn't implemented yet here), so
+                        // this arm is not currently reachable in practice.
+                        // Handled anyway for exhaustiveness and so it does
+                        // the right, non-silent thing the moment this
+                        // binary does start driving a real tunnel.
+                        warn!(task = task, reason = %reason, "Fatal tunnel task failure reported");
+                    }
                 }
             }
         }
