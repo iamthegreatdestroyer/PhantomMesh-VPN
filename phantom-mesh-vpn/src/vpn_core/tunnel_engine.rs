@@ -664,8 +664,19 @@ impl TunnelEngine {
         let tun2 = tun.clone();
         let event_tx2 = self.event_tx.clone();
         let handles2 = self.task_handles.clone();
+        let identity2 = self.identity.clone();
+        let session_map2 = self.session_map.clone();
+        let pending_handshakes2 = self.pending_handshakes.clone();
 
         let tun_read_handle = tokio::spawn(async move {
+            let handshaker2 = HandshakeHelper {
+                identity: identity2,
+                peers: peers2.clone(),
+                session_map: session_map2,
+                pending_handshakes: pending_handshakes2,
+                stats: stats2.clone(),
+                event_tx: event_tx2.clone(),
+            };
             let mut buf = vec![0u8; MAX_PACKET_SIZE];
             loop {
                 if !running2.load(Ordering::SeqCst) { break; }
@@ -677,7 +688,7 @@ impl TunnelEngine {
                         Ok(len) => {
                             let ip_packet = &buf[..len];
                             let peers = peers2.read().await;
-                            for (_pk, peer) in peers.iter() {
+                            for (pk, peer) in peers.iter() {
                                 let endpoint = match peer.config.endpoint {
                                     Some(e) => e,
                                     None => continue,
@@ -691,10 +702,35 @@ impl TunnelEngine {
                                 // this peer is silently dropped until a
                                 // handshake completes, rather than sent
                                 // unencrypted or under some ad-hoc key.
+                                //
+                                // BUG FIX (found via manual two-instance
+                                // verification -- no automated test caught
+                                // this since none exercised a real start()):
+                                // nothing anywhere ever initiated the FIRST
+                                // handshake with a brand-new peer. add_peer()
+                                // only logs and waits, and the keepalive
+                                // task's rekey trigger requires an existing
+                                // session (session_exists must already be
+                                // true). A fresh two-peer setup never
+                                // connected at all -- confirmed empirically:
+                                // the kernel queued outbound ICMP packets to
+                                // the TUN device, but zero ever reached the
+                                // wire. Kicking off a handshake attempt here,
+                                // on the first outbound-traffic attempt that
+                                // finds no session, closes that gap.
+                                // initiate_handshake is itself a no-op if one
+                                // is already pending for this peer, so this
+                                // is safe to call on every dropped packet
+                                // while a handshake is in flight.
                                 let session_guard = peer.session.read().await;
                                 let session = match session_guard.as_ref() {
                                     Some(s) => s,
-                                    None => continue,
+                                    None => {
+                                        if let Err(e) = handshaker2.initiate_handshake(&send_socket, *pk, peer).await {
+                                            debug!(peer = ?hex::encode(&pk[..8]), error = %e, "Handshake initiation (from outbound traffic) failed");
+                                        }
+                                        continue;
+                                    }
                                 };
 
                                 let nonce_counter = session.send_nonce.fetch_add(1, Ordering::SeqCst);
