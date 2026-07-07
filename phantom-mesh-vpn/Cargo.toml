@@ -10,7 +10,7 @@ repository = "https://github.com/phantommesh/phantom-mesh-vpn"
 [dependencies]
 # WireGuard Protocol (boringtun is Unix-only, using manual implementation)
 # boringtun = { version = "0.6", features = ["device"] }
-x25519-dalek = "2.0.0-rc.3"
+x25519-dalek = "2.0.1"
 
 # Quantum-Resistant Cryptography (Kyber/CRYSTALS)
 pqcrypto-kyber = "0.8"
