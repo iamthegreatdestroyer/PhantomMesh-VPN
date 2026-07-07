@@ -12,7 +12,7 @@ use tracing_subscriber::fmt::format::json;
 use rand::RngCore;
 
 use phantom_mesh::mesh::healer::MeshHealer;
-use phantom_mesh::security_layer::{crypto_manager::CryptoManager, sigma_vault::SigmaVault, threat_engine::ThreatEngine};
+use phantom_mesh::security_layer::{crypto_manager::CryptoManager, handshake::NodeIdentity, sigma_vault::SigmaVault, threat_engine::ThreatEngine};
 use phantom_mesh::vpn_core::{tunnel_engine::TunnelEngine, api_gateway::ApiGateway};
 use phantom_mesh::metrics::{init_metrics, update_system_metrics};
 
@@ -51,10 +51,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Initialize mesh healer (75s timeout = 3 missed keepalives)
     let mesh_healer = Arc::new(MeshHealer::new(75));
 
-    // Initialize tunnel engine with handshake-derived keys
-    let keys = crypto.generate_keypair().map_err(|e| e.to_string())?;
+    // Initialize tunnel engine with a real X25519 static keypair.
+    // (CryptoManager::generate_keypair() was deleted in the Stage 1 crypto
+    // fix — it produced two independent random values with no cryptographic
+    // relationship between them, i.e. was not usable as a real keypair.)
+    let identity = NodeIdentity::generate().map_err(|e| e.to_string())?;
     let _tunnel_engine = Arc::new(
-        TunnelEngine::new(crypto.clone(), event_tx, keys.0, keys.1)
+        TunnelEngine::new(crypto.clone(), event_tx, identity.x25519_private, identity.x25519_public)
             .with_mesh_healer(mesh_healer)
             .with_threat_engine(Arc::clone(&threat_engine))
     );

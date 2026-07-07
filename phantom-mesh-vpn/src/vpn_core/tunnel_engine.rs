@@ -625,6 +625,17 @@ impl DecryptHelper {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::security_layer::handshake::NodeIdentity;
+
+    /// Generate a real X25519 keypair for test-only TunnelEngine construction.
+    /// Replaces the old CryptoManager::generate_keypair() (deleted in the
+    /// Stage 1 crypto fix — it produced two independent random values with
+    /// no cryptographic relationship between them at all). NodeIdentity's
+    /// x25519_private/x25519_public fields ARE a real DH keypair.
+    fn test_keypair() -> ([u8; 32], [u8; 32]) {
+        let identity = NodeIdentity::generate().unwrap();
+        (identity.x25519_private, identity.x25519_public)
+    }
 
     #[test]
     fn test_replay_window_accepts_new() {
@@ -676,7 +687,7 @@ mod tests {
     async fn test_tunnel_engine_creation() {
         let crypto = Arc::new(CryptoManager::new().unwrap());
         let (tx, _rx) = mpsc::channel(100);
-        let keys = crypto.generate_keypair().unwrap();
+        let keys = test_keypair();
         let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1);
         let stats = engine.get_stats().await;
         assert_eq!(stats.packets_sent, 0);
@@ -687,7 +698,7 @@ mod tests {
     async fn test_add_remove_peer() {
         let crypto = Arc::new(CryptoManager::new().unwrap());
         let (tx, _rx) = mpsc::channel(100);
-        let keys = crypto.generate_keypair().unwrap();
+        let keys = test_keypair();
         let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1);
 
         let peer_config = PeerConfig {
@@ -712,7 +723,7 @@ mod tests {
     async fn test_encrypt_decrypt_roundtrip() {
         let crypto = Arc::new(CryptoManager::new().unwrap());
         let (tx, _rx) = mpsc::channel(100);
-        let keys = crypto.generate_keypair().unwrap();
+        let keys = test_keypair();
         let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1);
 
         let peer_config = PeerConfig {
@@ -744,7 +755,7 @@ mod tests {
     async fn test_keepalive_packet_format() {
         let crypto = Arc::new(CryptoManager::new().unwrap());
         let (tx, _rx) = mpsc::channel(100);
-        let keys = crypto.generate_keypair().unwrap();
+        let keys = test_keypair();
         let engine = TunnelEngine::new(crypto.clone(), tx, keys.0, keys.1);
 
         let peer_config = PeerConfig {
@@ -780,7 +791,7 @@ mod tests {
     async fn test_mesh_healer_wiring() {
         let crypto = Arc::new(CryptoManager::new().unwrap());
         let (tx, mut rx) = mpsc::channel(100);
-        let keys = crypto.generate_keypair().unwrap();
+        let keys = test_keypair();
         let healer = Arc::new(MeshHealer::new(0)); // 0s timeout for testing
         let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1)
             .with_mesh_healer(healer.clone());
@@ -807,7 +818,7 @@ mod tests {
     async fn test_threat_engine_wiring() {
         let crypto = Arc::new(CryptoManager::new().unwrap());
         let (tx, _rx) = mpsc::channel(100);
-        let keys = crypto.generate_keypair().unwrap();
+        let keys = test_keypair();
         let threat = Arc::new(ThreatEngine::new().unwrap());
         let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1)
             .with_threat_engine(threat.clone());
@@ -819,7 +830,7 @@ mod tests {
     async fn test_peer_timeout_detection() {
         let crypto = Arc::new(CryptoManager::new().unwrap());
         let (tx, mut rx) = mpsc::channel(100);
-        let keys = crypto.generate_keypair().unwrap();
+        let keys = test_keypair();
         let healer = Arc::new(MeshHealer::new(0));
         let engine = TunnelEngine::new(crypto, tx, keys.0, keys.1)
             .with_mesh_healer(healer.clone());

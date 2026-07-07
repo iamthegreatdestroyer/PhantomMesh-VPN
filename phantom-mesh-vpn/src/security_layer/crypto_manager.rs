@@ -134,19 +134,6 @@ impl CryptoManager {
         Ok(bytes)
     }
 
-    // Legacy methods for compatibility
-    pub fn generate_keypair(&self) -> Result<([u8; 32], [u8; 32]), Box<dyn std::error::Error>> {
-        let mut public = [0u8; 32];
-        let mut secret = [0u8; 32];
-        self.rng
-            .fill(&mut public)
-            .map_err(|_| "Random generation failed")?;
-        self.rng
-            .fill(&mut secret)
-            .map_err(|_| "Random generation failed")?;
-        Ok((public, secret))
-    }
-
     pub fn encrypt(
         &self,
         plaintext: &[u8],

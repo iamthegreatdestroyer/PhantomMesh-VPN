@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use phantom_mesh::security_layer::crypto_manager::CryptoManager;
+use phantom_mesh::security_layer::handshake::NodeIdentity;
 use phantom_mesh::vpn_core::config::Config;
 use phantom_mesh::vpn_core::tunnel_engine::{TunnelEngine, PeerConfig};
 
@@ -35,10 +36,13 @@ fn print_usage() {
 }
 
 fn cmd_genkey() {
-    let crypto = CryptoManager::new().expect("Failed to init crypto");
-    let (public, private) = crypto.generate_keypair().expect("Failed to generate keypair");
-    println!("{}", hex::encode(private));
-    eprintln!("Public key: {}", hex::encode(public));
+    // Real X25519 keypair (CryptoManager::generate_keypair() was deleted in
+    // the Stage 1 crypto fix — it produced two independent random values
+    // with no cryptographic relationship between them, i.e. was not usable
+    // as a real keypair at all).
+    let identity = NodeIdentity::generate().expect("Failed to generate keypair");
+    println!("{}", hex::encode(identity.x25519_private));
+    eprintln!("Public key: {}", hex::encode(identity.x25519_public));
 }
 
 fn cmd_pubkey() {
