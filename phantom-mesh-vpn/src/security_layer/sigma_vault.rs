@@ -345,6 +345,31 @@ impl CryptoDimensionHandler {
     }
 
     /// Encrypt fragment based on cryptographic coordinate
+    ///
+    /// # KNOWN BUG -- nonce reuse, do not wire this into any live path as-is
+    ///
+    /// The nonce is derived solely from `nonce_seed` (the caller always
+    /// passes the packet's `sequence_id`, fixed for the whole packet) and
+    /// `coordinate.cryptographic` (also fixed for the whole packet, see the
+    /// one real caller in the scatter/fragment loop this is invoked from).
+    /// `fragment_id`, the value that actually varies per fragment, is never
+    /// mixed into the nonce at all. Every fragment of a multi-fragment
+    /// packet is therefore encrypted under the literal same key+nonce pair
+    /// -- a real AEAD nonce-reuse break (XOR-of-plaintexts leakage at
+    /// minimum, and it undermines the authentication guarantee too), not a
+    /// theoretical one.
+    ///
+    /// This module is currently unreachable from the live phantommesh
+    /// binary (src/bin/cli.rs has zero references to SigmaVault --
+    /// confirmed by grep, 2026-07-07). It is constructed in the separate,
+    /// non-production phantom-node binary (src/main.rs), but nothing there
+    /// calls the fragment/scatter path with real packet data either, so the
+    /// bug is currently dormant everywhere, not just in theory.
+    ///
+    /// Do not wire this into any live path (including a future revival of
+    /// phantom-node) until per-fragment nonce uniqueness is fixed -- e.g.
+    /// mix `fragment_id` into the nonce, or use a monotonic counter that is
+    /// genuinely unique per (packet, fragment) pair, not per packet alone.
     pub fn encrypt_fragment(&self, fragment: &[u8], coordinate: &DimensionalCoordinate, nonce_seed: u64) -> Result<Vec<u8>, &'static str> {
         let mut nonce_bytes = [0u8; 12];
         nonce_bytes[0..8].copy_from_slice(&nonce_seed.to_le_bytes());
