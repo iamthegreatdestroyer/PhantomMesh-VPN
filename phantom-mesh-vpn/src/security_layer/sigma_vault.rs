@@ -344,38 +344,37 @@ impl CryptoDimensionHandler {
         }
     }
 
-    /// Encrypt fragment based on cryptographic coordinate
+    /// Derive the 96-bit AEAD nonce for a single fragment.
     ///
-    /// # KNOWN BUG -- nonce reuse, do not wire this into any live path as-is
+    /// The nonce is an *injective* function of the `(sequence_id, fragment_id)`
+    /// pair: the 8-byte big-endian per-packet `sequence_id` occupies bytes
+    /// `0..8` and the 4-byte big-endian per-fragment `fragment_id` occupies
+    /// bytes `8..12`. The two fields never overlap and together fill the whole
+    /// 12-byte nonce, so distinct `(sequence_id, fragment_id)` pairs always map
+    /// to distinct nonces. Under a single key this guarantees that no two
+    /// fragments ever share a nonce -- closing the previous nonce-reuse hole
+    /// where only the per-packet `sequence_id` (plus a per-packet-constant
+    /// `coordinate.cryptographic`) was mixed in, so every fragment of a
+    /// multi-fragment packet was encrypted under the identical key+nonce pair.
     ///
-    /// The nonce is derived solely from `nonce_seed` (the caller always
-    /// passes the packet's `sequence_id`, fixed for the whole packet) and
-    /// `coordinate.cryptographic` (also fixed for the whole packet, see the
-    /// one real caller in the scatter/fragment loop this is invoked from).
-    /// `fragment_id`, the value that actually varies per fragment, is never
-    /// mixed into the nonce at all. Every fragment of a multi-fragment
-    /// packet is therefore encrypted under the literal same key+nonce pair
-    /// -- a real AEAD nonce-reuse break (XOR-of-plaintexts leakage at
-    /// minimum, and it undermines the authentication guarantee too), not a
-    /// theoretical one.
-    ///
-    /// This module is currently unreachable from the live phantommesh
-    /// binary (src/bin/cli.rs has zero references to SigmaVault --
-    /// confirmed by grep, 2026-07-07). Its only other historical
-    /// construction site was the phantom-node binary (src/main.rs), which
-    /// was removed in Stage 6b; nothing in the current tree calls the
-    /// fragment/scatter path with real packet data, so the bug is dormant
-    /// everywhere, not just in theory.
-    ///
-    /// Do not wire this into any live path until per-fragment nonce
-    /// uniqueness is fixed -- e.g. mix `fragment_id` into the nonce, or use
-    /// a monotonic counter that is genuinely unique per (packet, fragment)
-    /// pair, not per packet alone.
-    pub fn encrypt_fragment(&self, fragment: &[u8], coordinate: &DimensionalCoordinate, nonce_seed: u64) -> Result<Vec<u8>, &'static str> {
+    /// Both the encrypt and decrypt paths call this same helper, so they are
+    /// guaranteed to derive byte-for-byte identical nonces.
+    fn fragment_nonce(sequence_id: u64, fragment_id: u32) -> [u8; 12] {
         let mut nonce_bytes = [0u8; 12];
-        nonce_bytes[0..8].copy_from_slice(&nonce_seed.to_le_bytes());
-        nonce_bytes[8..12].copy_from_slice(&(coordinate.cryptographic as u32).to_le_bytes()[0..4]);
+        nonce_bytes[0..8].copy_from_slice(&sequence_id.to_be_bytes());
+        nonce_bytes[8..12].copy_from_slice(&fragment_id.to_be_bytes());
+        nonce_bytes
+    }
 
+    /// Encrypt a single fragment under a per-fragment-unique nonce.
+    ///
+    /// The nonce is derived from `(sequence_id, fragment_id)` via
+    /// [`Self::fragment_nonce`], so every fragment of a multi-fragment packet
+    /// is encrypted under a distinct nonce. The decrypt side reconstructs the
+    /// identical nonce from the same two fields carried in the fragment
+    /// metadata.
+    pub fn encrypt_fragment(&self, fragment: &[u8], sequence_id: u64, fragment_id: u32) -> Result<Vec<u8>, &'static str> {
+        let nonce_bytes = Self::fragment_nonce(sequence_id, fragment_id);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         match self.cipher.encrypt(nonce, fragment) {
@@ -384,12 +383,9 @@ impl CryptoDimensionHandler {
         }
     }
 
-    /// Decrypt fragment
-    pub fn decrypt_fragment(&self, encrypted_fragment: &[u8], coordinate: &DimensionalCoordinate, nonce_seed: u64) -> Result<Vec<u8>, &'static str> {
-        let mut nonce_bytes = [0u8; 12];
-        nonce_bytes[0..8].copy_from_slice(&nonce_seed.to_le_bytes());
-        nonce_bytes[8..12].copy_from_slice(&(coordinate.cryptographic as u32).to_le_bytes()[0..4]);
-
+    /// Decrypt a single fragment, deriving the identical per-fragment nonce.
+    pub fn decrypt_fragment(&self, encrypted_fragment: &[u8], sequence_id: u64, fragment_id: u32) -> Result<Vec<u8>, &'static str> {
+        let nonce_bytes = Self::fragment_nonce(sequence_id, fragment_id);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         match self.cipher.decrypt(nonce, encrypted_fragment) {
@@ -571,7 +567,7 @@ impl SigmaVault {
             // Apply cryptographic dimension
             let encrypted_fragment = {
                 let crypto = self.crypto_handler.read().await;
-                crypto.encrypt_fragment(&fragment.data, &coordinate, fragment.sequence_id)?
+                crypto.encrypt_fragment(&fragment.data, fragment.sequence_id, fragment.fragment_id)?
             };
 
             let mut processed_fragment = fragment.clone();
@@ -630,7 +626,7 @@ impl SigmaVault {
             // Decrypt fragment
             let decrypted_data = {
                 let crypto = self.crypto_handler.read().await;
-                crypto.decrypt_fragment(encrypted_data, &fragment.coordinate, fragment.sequence_id)?
+                crypto.decrypt_fragment(encrypted_data, fragment.sequence_id, fragment.fragment_id)?
             };
 
             // Update fragment with decrypted data
