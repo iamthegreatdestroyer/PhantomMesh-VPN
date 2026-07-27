@@ -31,4 +31,4 @@ logs/
 .venv
 env/
 venv/
-ENV/
+ENV/.claude/
